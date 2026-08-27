@@ -1,6 +1,8 @@
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as logs from "aws-cdk-lib/aws-logs";
 import { Construct } from "constructs";
+import { appConfig } from "./config";
 
 /**
  * Created first, deliberately separate from VectorStoreStack and ComputeStack,
@@ -16,10 +18,32 @@ import { Construct } from "constructs";
  * matching the reference lib/iam-stack.ts's AossAccess statement — AOSS
  * control-plane/data-plane actions generally aren't scoped to a single
  * collection ID in practice in the reference codebase either.
+ *
+ * The connector's CloudWatch log group is also created here, not in
+ * ComputeStack — same reasoning as the roles above. `ecs.LogDrivers.awsLogs()`
+ * automatically grants the *execution role* logs:CreateLogStream/PutLogEvents
+ * on the log group the moment the container is added to the task definition.
+ * If the log group lived in ComputeStack, that grant would add an IAM policy
+ * statement to `executionRole` (an IamStack resource) referencing a
+ * ComputeStack token — requiring IamStack to depend on ComputeStack. Since
+ * ComputeStack already transitively depends on IamStack (it needs
+ * taskRole/executionRole, and depends on VectorStoreStack, which depends on
+ * NetworkStack, which depends on IamStack), that reverse edge is a genuine
+ * cycle CDK refuses to resolve. Creating the log group here instead keeps the
+ * grant same-stack, so no cross-stack reference — and therefore no cycle —
+ * is ever created.
  */
 export class IamStack extends cdk.Stack {
   public readonly taskRole: iam.Role;
   public readonly executionRole: iam.Role;
+  public readonly connectorLogGroup: logs.LogGroup;
+  /** DashboardStack's log group — lives here for the exact same reason
+   *  connectorLogGroup does (see class comment): DashboardStack reuses this
+   *  stack's executionRole, so creating the log group in DashboardStack
+   *  instead would force IamStack to depend on DashboardStack for the
+   *  auto-granted logs:CreateLogStream/PutLogEvents permission, creating the
+   *  same cycle already documented above. */
+  public readonly dashboardLogGroup: logs.LogGroup;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -58,6 +82,18 @@ export class IamStack extends cdk.Stack {
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AmazonECSTaskExecutionRolePolicy")
       ]
+    });
+
+    this.connectorLogGroup = new logs.LogGroup(this, "ConnectorLogGroup", {
+      logGroupName: appConfig.compute.logGroupName,
+      retention: appConfig.compute.logRetention,
+      removalPolicy: cdk.RemovalPolicy.DESTROY
+    });
+
+    this.dashboardLogGroup = new logs.LogGroup(this, "DashboardLogGroup", {
+      logGroupName: appConfig.dashboard.logGroupName,
+      retention: appConfig.dashboard.logRetention,
+      removalPolicy: cdk.RemovalPolicy.DESTROY
     });
   }
 }

@@ -6,7 +6,14 @@ const PREFIX = process.env.DOCUMENTS_PREFIX ?? "jobs/";
 
 const s3 = new S3Client({ region: REGION });
 
-/** Same finding shape as harness-findings in the reference codebase. */
+/**
+ * Same finding shape as harness-findings in the reference codebase, plus
+ * four replica-specific additions not present in the production schema:
+ * classification, summary, remediation, riskScore — a richer per-finding
+ * detail set closer to what a real FINDINGS_SUMMARY.json carries. All four
+ * are optional so existing minimal findings (just the core 7 fields) still
+ * satisfy this type.
+ */
 export interface Finding {
   findingId: string;
   title: string;
@@ -15,6 +22,14 @@ export interface Finding {
   jobId: string;
   cwe?: string;
   createdAt?: string;
+  /** Category label, e.g. "Network Security", "Identity & Access Management". */
+  classification?: string;
+  /** Longer free-text description of the finding, beyond the short title. */
+  summary?: string;
+  /** Short recommended-fix text. */
+  remediation?: string;
+  /** 0-100 risk score, distinct from the categorical severity field. */
+  riskScore?: number;
 }
 
 /**
@@ -70,7 +85,11 @@ export async function readS3Documents(): Promise<Finding[]> {
         assetName: f.assetName ?? assetSlug,
         jobId: f.jobId ?? assetSlug,
         cwe: f.cwe,
-        createdAt: f.createdAt
+        createdAt: f.createdAt,
+        classification: f.classification,
+        summary: f.summary,
+        remediation: f.remediation,
+        riskScore: f.riskScore
       });
     }
   }

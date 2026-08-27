@@ -40,6 +40,10 @@ export async function readDynamoDbDocuments(): Promise<Finding[]> {
       assetName: item.assetName ?? "",
       jobId: item.jobId ?? "",
       cwe: item.cwe,
-      createdAt: item.createdAt
+      createdAt: item.createdAt,
+      classification: item.classification,
+      summary: item.summary,
+      remediation: item.remediation,
+      riskScore: item.riskScore
     }));
 }

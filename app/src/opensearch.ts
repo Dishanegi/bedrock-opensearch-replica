@@ -75,7 +75,11 @@ export async function ensureIndex(): Promise<void> {
             jobId: { type: "keyword" },
             jobType: { type: "keyword" },
             cwe: { type: "keyword" },
-            createdAt: { type: "date" }
+            createdAt: { type: "date" },
+            classification: { type: "keyword" },
+            summary: { type: "text" },
+            remediation: { type: "text" },
+            riskScore: { type: "integer" }
           }
         }
       }
@@ -101,6 +105,10 @@ export interface FindingEmbeddingDoc {
   cwe?: string;
   embedding: number[];
   createdAt?: string;
+  classification?: string;
+  summary?: string;
+  remediation?: string;
+  riskScore?: number;
 }
 
 /**
@@ -123,9 +131,15 @@ export async function indexDocument(doc: FindingEmbeddingDoc): Promise<void> {
       cwe: doc.cwe ?? "",
       embedding: doc.embedding,
       jobType: JOB_TYPE,
-      createdAt: doc.createdAt ?? new Date().toISOString()
-    },
-    refresh: true
+      createdAt: doc.createdAt ?? new Date().toISOString(),
+      classification: doc.classification ?? "",
+      summary: doc.summary ?? "",
+      remediation: doc.remediation ?? "",
+      riskScore: doc.riskScore ?? 0
+    }
+    // No `refresh` option — AOSS Serverless only supports refresh=false
+    // (the default); passing refresh: true fails with a 400
+    // "true refresh policy is not supported" status_exception.
   });
 }
 
@@ -153,7 +167,7 @@ export async function clearExistingEmbeddings(jobId: string): Promise<void> {
       if (searchAfter !== undefined) body.search_after = searchAfter;
 
       const searchResp = await client.search({ index: INDEX_NAME, body });
-      const hits = (searchResp.body.hits?.hits ?? []) as Array<{
+      const hits = (searchResp.body.hits?.hits ?? []) as unknown as Array<{
         _id: string;
         sort?: unknown[];
       }>;
@@ -208,7 +222,7 @@ export async function knnSearch(embedding: number[], k = 5): Promise<SimilarResu
     }
   });
 
-  const hits = (res.body?.hits?.hits ?? []) as Array<{
+  const hits = (res.body?.hits?.hits ?? []) as unknown as Array<{
     _score: number;
     _source: { findingId: string; title: string; severity: string; assetName: string };
   }>;

@@ -9,6 +9,27 @@ export interface VectorStoreStackProps extends cdk.StackProps {
    *  GetAtt("Id"), not an ec2.InterfaceVpcEndpoint. */
   readonly aossEndpointId: string;
   readonly taskRole: iam.Role;
+  /**
+   * Extra IAM principal ARNs (beyond the task role) granted the same
+   * collection/index data-access permissions. TEMPORARY, testing-only
+   * mechanism — e.g. adding your own IAM user so ensureIndex()/indexDocument()
+   * can be run from a laptop before ComputeStack/Fargate exists. Sourced from
+   * an env var in bin/app.ts rather than hardcoded here, specifically so no
+   * personal identity ends up committed — unset the env var and redeploy to
+   * revert to task-role-only access.
+   */
+  readonly additionalDataAccessPrincipals?: string[];
+  /**
+   * TEMPORARY, testing-only: when true, the network policy allows access
+   * from the public internet (still gated by the data-access policy's IAM
+   * principals underneath) instead of restricting the collection to the
+   * VPC endpoint only. Needed because AOSS's network policy is a separate
+   * layer from IAM — being listed in the data-access policy is not enough
+   * to reach the collection from outside the VPC at all. Sourced from an
+   * env var in bin/app.ts; unset it and redeploy to revert to
+   * VPC-endpoint-only access, matching the collection's normal design.
+   */
+  readonly allowPublicNetworkAccess?: boolean;
 }
 
 /**
@@ -76,6 +97,10 @@ export class VectorStoreStack extends cdk.Stack {
       "kms:CreateGrant"
     );
 
+    // AllowFromPublic and SourceVPCEs are mutually exclusive on an AOSS
+    // network policy rule — the API rejects a rule specifying both. Normal
+    // (non-testing) shape restricts to the VPC endpoint only.
+    const allowPublic = props.allowPublicNetworkAccess ?? false;
     const networkPolicy = new cdk.CfnResource(this, "NetworkPolicy", {
       type: "AWS::OpenSearchServerless::SecurityPolicy",
       properties: {
@@ -87,8 +112,8 @@ export class VectorStoreStack extends cdk.Stack {
               { ResourceType: "collection", Resource: [`collection/${this.collectionName}`] },
               { ResourceType: "dashboard", Resource: [`collection/${this.collectionName}`] }
             ],
-            AllowFromPublic: false,
-            SourceVPCEs: [props.aossEndpointId]
+            AllowFromPublic: allowPublic,
+            ...(allowPublic ? {} : { SourceVPCEs: [props.aossEndpointId] })
           }
         ])
       }
@@ -130,7 +155,7 @@ export class VectorStoreStack extends cdk.Stack {
                 Permission: ["aoss:*"]
               }
             ],
-            Principal: [props.taskRole.roleArn]
+            Principal: [props.taskRole.roleArn, ...(props.additionalDataAccessPrincipals ?? [])]
           }
         ])
       }

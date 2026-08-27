@@ -16,15 +16,22 @@ const EMBEDDING_TEXT_LIMIT = 2000;
 const bedrockClient = new BedrockRuntimeClient({ region: REGION });
 
 /**
- * Builds the exact text string kg.ts embeds for a finding
+ * Base text is the exact string kg.ts embeds for a finding
  * (`writeUseCaseKnowledgeGraph`, kg.ts:983-988): title, severity, cwe, and
- * assetName, space-joined with no labels, truncated to 2000 chars.
+ * assetName, space-joined with no labels — this part stays byte-for-byte
+ * identical to production, per the README's parity table.
+ *
+ * classification/summary/remediation are appended after that base — a
+ * deliberate, replica-specific DIVERGENCE from strict production parity,
+ * since those fields don't exist in the reference schema at all. They're
+ * included here (not just stored as inert fields) because a finding's
+ * semantic content — what k-NN search actually matches on — is much richer
+ * with a real summary/remediation than with just a short title.
  */
 export function buildEmbeddingText(finding: Finding): string {
-  return `${finding.title} ${finding.severity} ${finding.cwe ?? ""} ${finding.assetName}`.slice(
-    0,
-    EMBEDDING_TEXT_LIMIT
-  );
+  const base = `${finding.title} ${finding.severity} ${finding.cwe ?? ""} ${finding.assetName}`;
+  const extra = [finding.classification, finding.summary, finding.remediation].filter(Boolean).join(" ");
+  return `${base} ${extra}`.trim().slice(0, EMBEDDING_TEXT_LIMIT);
 }
 
 /**

@@ -23,6 +23,26 @@ export class NetworkStack extends cdk.Stack {
    *  for why this is a different CloudFormation resource type entirely. */
   public readonly aossEndpointId: string;
   public readonly computeSg: ec2.SecurityGroup;
+  /** Plain security-group IDs (not construct references) for the two shared
+   *  endpoint SGs below — exposed so other stacks (e.g. DashboardStack) can
+   *  add their own ingress rules onto these SGs via a standalone
+   *  CfnSecurityGroupIngress resource in THEIR OWN stack, rather than
+   *  NetworkStack importing a construct reference from a stack that itself
+   *  depends on NetworkStack (would be a circular dependency — see
+   *  DashboardStack's own comment on this for the full reasoning). */
+  public readonly endpointSgId: string;
+  public readonly aossEndpointSgId: string;
+  /** NextGen collections resolve on a completely different domain
+   *  (*.aoss.{region}.on.aws) than Classic (*.aoss.amazonaws.com) — the raw
+   *  AWS::OpenSearchServerless::VpcEndpoint above only creates a private
+   *  hosted zone for the Classic domain. NextGen requires a genuinely
+   *  different, STANDARD interface VPC endpoint (service
+   *  com.amazonaws.{region}.aoss-data) — confirmed via AWS's own docs after
+   *  discovering the hard way that NextGen's hostname was resolving to
+   *  public IPv6 addresses despite being correctly listed in the network
+   *  policy (that policy only controls authorization, not DNS resolution —
+   *  two separate layers). */
+  public readonly aossNextGenEndpointId: string;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -54,6 +74,7 @@ export class NetworkStack extends cdk.Stack {
       allowAllOutbound: false
     });
     endpointSg.addIngressRule(this.computeSg, ec2.Port.tcp(443), "HTTPS from compute task");
+    this.endpointSgId = endpointSg.securityGroupId;
 
     // Bedrock runtime — required for embedding calls (bedrock-runtime, not
     // the "bedrock" control-plane service, which is a different endpoint).
@@ -80,6 +101,7 @@ export class NetworkStack extends cdk.Stack {
       allowAllOutbound: false
     });
     aossEndpointSg.addIngressRule(this.computeSg, ec2.Port.tcp(443), "Compute task to AOSS");
+    this.aossEndpointSgId = aossEndpointSg.securityGroupId;
 
     const aossVpcEndpoint = new cdk.CfnResource(this, "AossVpcEndpoint", {
       type: "AWS::OpenSearchServerless::VpcEndpoint",
@@ -112,10 +134,11 @@ export class NetworkStack extends cdk.Stack {
       subnets: [{ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }]
     });
 
-    // Without these three, the Fargate task itself cannot start in this
-    // NAT-less, IGW-less VPC — this isn't about the connector's own AWS SDK
-    // calls (Bedrock/AOSS/S3/DynamoDB, all covered above), it's what ECS
-    // needs just to launch the task and receive its logs:
+    // DEFERRED along with ComputeStack in bin/app.ts: without these three,
+    // the Fargate task itself cannot start in this NAT-less, IGW-less VPC —
+    // this isn't about the connector's own AWS SDK calls (Bedrock/AOSS/S3/
+    // DynamoDB, all covered above), it's what ECS needs just to launch the
+    // task and receive its logs:
     //  - ecr.api + ecr.dkr: pulling the container image from ECR (the
     //    README's documented deploy path). The S3 gateway endpoint above is
     //    also required for this (ECR image layers are stored in S3), but is
@@ -142,5 +165,39 @@ export class NetworkStack extends cdk.Stack {
       subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       securityGroups: [endpointSg]
     });
+
+    // Added for DashboardStack: ECS Exec (and the SSM port-forwarding session
+    // used to reach the internal-only dashboard ALB from a laptop) both ride
+    // over Systems Manager's own channel, which needs these three endpoints
+    // to work with zero internet access — same reasoning as ECR/logs above,
+    // this isn't optional once ECS Exec is enabled on any task in this VPC.
+    this.vpc.addInterfaceEndpoint("SsmMessagesEndpoint", {
+      service: ec2.InterfaceVpcEndpointAwsService.SSM_MESSAGES,
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [endpointSg]
+    });
+    this.vpc.addInterfaceEndpoint("SsmEndpoint", {
+      service: ec2.InterfaceVpcEndpointAwsService.SSM,
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [endpointSg]
+    });
+    this.vpc.addInterfaceEndpoint("Ec2MessagesEndpoint", {
+      service: ec2.InterfaceVpcEndpointAwsService.EC2_MESSAGES,
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [endpointSg]
+    });
+
+    // NextGen collections' private connectivity — see the aossNextGenEndpointId
+    // class member comment above for why this is a completely separate
+    // endpoint from AossVpcEndpoint, not optional/redundant with it. Not in
+    // CDK's built-in InterfaceVpcEndpointAwsService enum yet (too new), so
+    // constructed manually from the raw PrivateLink service name.
+    const aossNextGenVpcEndpoint = this.vpc.addInterfaceEndpoint("AossNextGenEndpoint", {
+      service: new ec2.InterfaceVpcEndpointService(`com.amazonaws.${cdk.Aws.REGION}.aoss-data`, 443),
+      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [endpointSg],
+      privateDnsEnabled: true
+    });
+    this.aossNextGenEndpointId = aossNextGenVpcEndpoint.vpcEndpointId;
   }
 }

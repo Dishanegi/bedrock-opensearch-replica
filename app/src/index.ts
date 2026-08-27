@@ -20,7 +20,8 @@ import { readS3Documents, type Finding } from "./s3-source";
  * re-running the connector against the same source data doesn't produce
  * duplicate vectors.
  */
-async function main(): Promise<void> {
+/** Exported (not auto-run on import) so seed-and-ingest.ts can sequence seed.ts's main() before this. */
+export async function main(): Promise<void> {
   console.log("[connector] ensuring index exists...");
   await ensureIndex();
 
@@ -74,7 +75,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(err => {
-  console.error("[connector] fatal error:", err);
-  process.exit(1);
-});
+// Only auto-run when this file is the process entrypoint (`node dist/index.js`
+// / `npm start`) — not when imported by seed-and-ingest.ts.
+if (require.main === module) {
+  main().catch(err => {
+    console.error("[connector] fatal error:", err);
+    process.exit(1);
+  });
+}

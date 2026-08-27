@@ -48,6 +48,19 @@ export interface AppConfig {
     readonly dataAccessPolicyName: string;
   };
 
+  readonly nextGenVectorStore: {
+    /** NextGen AOSS collection name/group — separate from vectorStore's
+     *  Classic collection, deliberately, so the two can be torn down
+     *  independently. Previously hardcoded directly in
+     *  nextgen-vector-store-stack.ts, inconsistent with every other stack's
+     *  config-driven naming — moved here to match. */
+    readonly collectionName: string;
+    readonly collectionGroupName: string;
+    readonly encryptionPolicyName: string;
+    readonly networkPolicyName: string;
+    readonly dataAccessPolicyName: string;
+  };
+
   readonly data: {
     /** S3 prefix under which each `{assetSlug}/FINDINGS_SUMMARY.json` lives —
      *  same shape as production's `jobs/{assetSlug}/FINDINGS_SUMMARY.json`
@@ -75,10 +88,38 @@ export interface AppConfig {
     /** Bedrock embedding model ID. Same default pentesting-agentic-harness-infra
      *  uses (see EmbeddingModel in its lib/build-config.ts / SKILL_DEVELOPER_CONTRACT.md §5.1). */
     readonly embeddingModel: string;
-    /** Placeholder — must be replaced with a real ECR image reference (or
-     *  switched to ecs.ContainerImage.fromAsset) before this can deploy.
-     *  See README "Deploying it yourself" step 1. */
-    readonly containerImagePlaceholder: string;
+  };
+
+  readonly dashboard: {
+    readonly clusterName: string;
+    readonly serviceName: string;
+    readonly logGroupName: string;
+    readonly logRetention: logs.RetentionDays;
+    readonly taskCpu: number;
+    readonly taskMemoryMiB: number;
+    /** Port the Express app listens on inside the container — also the ALB target group's port. */
+    readonly port: number;
+    /** Index name used inside NextGenVectorStoreStack's collection for the dashboard's real
+     *  (non-throwaway) seeded findings — distinct collection from Classic's, so reusing
+     *  vectorStore.indexName's exact string here would be fine too, but this is named
+     *  separately since the two collections' indexes are provisioned independently. */
+    readonly nextGenIndexName: string;
+    /** Total findings generated per "Seed Sample Data" run, split evenly
+     *  between S3 and DynamoDB (see app/src/seed.ts's same S3_SHARE=0.5
+     *  pattern) before being read back and indexed into both OpenSearch
+     *  collections. At ~1s per Bedrock embedding call, this many findings
+     *  takes a while — that's why /api/seed runs as a background job with
+     *  a /api/seed/status polling endpoint, not a single long request. */
+    readonly seedCount: number;
+  };
+
+  readonly bastion: {
+    /** SSM-only bastion — no key pair, no SSH, no public IP. Exists solely so
+     *  a laptop can SSM-port-forward into the private VPC to reach
+     *  DashboardStack's internal ALB (ECS Exec can run commands but can't
+     *  port-forward to a remote host — only a real EC2 SSM-managed instance
+     *  can, which is the whole reason this stack exists). */
+    readonly instanceName: string;
   };
 }
 
@@ -99,6 +140,14 @@ export const appConfig: AppConfig = {
     dataAccessPolicyName: "replica-data-access-policy"
   },
 
+  nextGenVectorStore: {
+    collectionName: "embed-compare-nextgen",
+    collectionGroupName: "embed-compare-group",
+    encryptionPolicyName: "embed-compare-encryption",
+    networkPolicyName: "embed-compare-network",
+    dataAccessPolicyName: "embed-compare-data-access"
+  },
+
   data: {
     documentsPrefix: "jobs/",
     documentsTableName: "harness-findings"
@@ -110,7 +159,22 @@ export const appConfig: AppConfig = {
     logRetention: logs.RetentionDays.TWO_WEEKS,
     taskCpu: 512,
     taskMemoryMiB: 1024,
-    embeddingModel: "amazon.titan-embed-text-v2:0",
-    containerImagePlaceholder: "REPLACE_ME/bedrock-opensearch-replica-connector:latest"
+    embeddingModel: "amazon.titan-embed-text-v2:0"
+  },
+
+  dashboard: {
+    clusterName: "bedrock-opensearch-dashboard",
+    serviceName: "eval-dashboard",
+    logGroupName: "/bedrock-opensearch-replica/dashboard",
+    logRetention: logs.RetentionDays.TWO_WEEKS,
+    taskCpu: 512,
+    taskMemoryMiB: 1024,
+    port: 3000,
+    nextGenIndexName: "replica-findings-kg",
+    seedCount: 2000
+  },
+
+  bastion: {
+    instanceName: "dashboard-ssm-bastion"
   }
 };

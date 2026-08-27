@@ -1,14 +1,11 @@
 {
-  "name": "bedrock-opensearch-connector",
+  "name": "opensearch-eval-dashboard",
   "version": "0.1.0",
   "private": true,
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "seed": "node dist/seed.js",
-    "seed-and-ingest": "node dist/seed-and-ingest.js",
-    "query": "node dist/query.js"
+    "start": "node dist/server.js"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.600.0",
@@ -16,9 +13,11 @@
     "@aws-sdk/client-s3": "^3.600.0",
     "@aws-sdk/credential-provider-node": "^3.600.0",
     "@aws-sdk/lib-dynamodb": "^3.600.0",
-    "@opensearch-project/opensearch": "^3.6.0"
+    "@opensearch-project/opensearch": "^3.6.0",
+    "express": "^4.19.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0"
   }

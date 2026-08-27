@@ -34,3 +34,6 @@ yarn-error.log*
 
 # Coverage
 coverage/
+
+# SCP scripts
+scripts-data-en/

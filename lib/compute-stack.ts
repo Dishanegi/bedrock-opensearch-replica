@@ -1,3 +1,4 @@
+import * as path from "path";
 import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecs from "aws-cdk-lib/aws-ecs";
@@ -11,6 +12,9 @@ export interface ComputeStackProps extends cdk.StackProps {
   readonly computeSg: ec2.SecurityGroup;
   readonly taskRole: iam.Role;
   readonly executionRole: iam.Role;
+  /** From IamStack.connectorLogGroup — created there, not here; see the
+   *  comment on IamStack for why (avoids a cross-stack IAM grant cycle). */
+  readonly connectorLogGroup: logs.LogGroup;
   readonly opensearchEndpoint: string;
   readonly opensearchCollectionName: string;
   readonly opensearchIndexName: string;
@@ -39,29 +43,27 @@ export class ComputeStack extends cdk.Stack {
       containerInsights: true
     });
 
-    const logGroup = new logs.LogGroup(this, "ConnectorLogGroup", {
-      logGroupName: appConfig.compute.logGroupName,
-      retention: appConfig.compute.logRetention,
-      removalPolicy: cdk.RemovalPolicy.DESTROY
-    });
-
     this.taskDefinition = new ecs.FargateTaskDefinition(this, "ConnectorTaskDef", {
       cpu: appConfig.compute.taskCpu,
       memoryLimitMiB: appConfig.compute.taskMemoryMiB,
       taskRole: props.taskRole,
-      executionRole: props.executionRole
+      executionRole: props.executionRole,
+      // Matches the arm64 image ecs.ContainerImage.fromAsset() below builds
+      // on Apple Silicon machines by default — without this, Fargate assumes
+      // x86_64 and the task fails immediately with "exec format error".
+      runtimePlatform: {
+        cpuArchitecture: ecs.CpuArchitecture.ARM64,
+        operatingSystemFamily: ecs.OperatingSystemFamily.LINUX
+      }
     });
 
     this.taskDefinition.addContainer("connector", {
-      // Built from ../app (see app/Dockerfile) and pushed to an ECR repo of
-      // the user's choosing before this task can actually run — this
-      // replica intentionally stops short of provisioning/pushing an ECR
-      // image, per the "structure first, no deploy" scope. Replace
-      // appConfig.compute.containerImagePlaceholder with a real
-      // ecs.ContainerImage.fromEcrRepository(...) or
-      // ecs.ContainerImage.fromAsset("../app") once ready to deploy.
-      image: ecs.ContainerImage.fromRegistry(appConfig.compute.containerImagePlaceholder),
-      logging: ecs.LogDrivers.awsLogs({ streamPrefix: "connector", logGroup }),
+      // Built from app/ (see app/Dockerfile) via Docker on the machine
+      // running `cdk deploy` — CDK builds the image and pushes it to a
+      // CDK-managed (bootstrap) ECR repo automatically as part of asset
+      // publishing, no manual ECR repo/push step needed.
+      image: ecs.ContainerImage.fromAsset(path.join(__dirname, "..", "app")),
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: "connector", logGroup: props.connectorLogGroup }),
       environment: {
         OPENSEARCH_ENDPOINT: props.opensearchEndpoint,
         OPENSEARCH_COLLECTION_NAME: props.opensearchCollectionName,
