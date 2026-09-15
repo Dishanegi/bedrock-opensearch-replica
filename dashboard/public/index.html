@@ -13,9 +13,10 @@
       <div class="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 class="text-xl font-semibold tracking-tight">OpenSearch Pipeline Evaluation Hub: Classic vs. NextGen</h1>
-          <div class="flex gap-2 mt-2">
+          <div class="flex gap-2 mt-2 flex-wrap">
             <span class="text-xs px-2 py-1 rounded-full bg-amber-900/40 text-amber-300 border border-amber-800">Powered by Amazon OpenSearch Serverless</span>
             <span class="text-xs px-2 py-1 rounded-full bg-emerald-900/40 text-emerald-300 border border-emerald-800">Amazon Titan Embeddings (retrieval only — no generation step)</span>
+            <span class="text-xs px-2 py-1 rounded-full bg-fuchsia-900/40 text-fuchsia-300 border border-fuchsia-800">AOSS Automatic Semantic Enrichment (sparse, service-managed, no query-time model call)</span>
           </div>
         </div>
         <button id="seedBtn" class="shrink-0 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium transition-colors">
@@ -28,6 +29,9 @@
           class="flex-1 px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
         <button id="compareBtn" class="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-semibold transition-colors">
           Compare Responses
+        </button>
+        <button id="compareAseBtn" class="px-5 py-2.5 rounded-lg bg-fuchsia-900/60 hover:bg-fuchsia-800/60 border border-fuchsia-800 text-sm font-semibold transition-colors" title="Runs only ASE (sparse) search on both tiers — no Bedrock embedding call">
+          Compare ASE Only
         </button>
       </div>
       <p id="statusLine" class="mt-2 text-xs text-slate-500 h-4"></p>
@@ -45,7 +49,8 @@
         </div>
         <div id="classic-keyword" class="result-block p-4 border-b border-slate-800"></div>
         <div id="classic-vector" class="result-block p-4 border-b border-slate-800"></div>
-        <div id="classic-hybrid" class="result-block p-4"></div>
+        <div id="classic-hybrid" class="result-block p-4 border-b border-slate-800"></div>
+        <div id="classic-ase" class="result-block p-4"></div>
       </section>
 
       <!-- NextGen panel -->
@@ -56,7 +61,8 @@
         </div>
         <div id="nextgen-keyword" class="result-block p-4 border-b border-indigo-900/60"></div>
         <div id="nextgen-vector" class="result-block p-4 border-b border-indigo-900/60"></div>
-        <div id="nextgen-hybrid" class="result-block p-4"></div>
+        <div id="nextgen-hybrid" class="result-block p-4 border-b border-indigo-900/60"></div>
+        <div id="nextgen-ase" class="result-block p-4"></div>
       </section>
 
     </div>

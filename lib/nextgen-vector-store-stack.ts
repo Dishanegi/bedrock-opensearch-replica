@@ -1,4 +1,6 @@
 import * as cdk from "aws-cdk-lib";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as kms from "aws-cdk-lib/aws-kms";
 import * as opensearchserverless from "aws-cdk-lib/aws-opensearchserverless";
 import { Construct } from "constructs";
 import { appConfig } from "./config";
@@ -46,6 +48,10 @@ export interface NextGenVectorStoreStackProps extends cdk.StackProps {
 export class NextGenVectorStoreStack extends cdk.Stack {
   public readonly collectionEndpoint: string;
   public readonly collectionName: string;
+  /** See VectorStoreStack's identical property for why this is needed —
+   *  the opensearchserverless control-plane API's index operations key off
+   *  collection id, not name. */
+  public readonly collectionId: string;
 
   constructor(scope: Construct, id: string, props: NextGenVectorStoreStackProps) {
     super(scope, id, props);
@@ -64,12 +70,64 @@ export class NextGenVectorStoreStack extends cdk.Stack {
       description: "Throwaway NextGen collection group for the Titan v2 vs Cohere v4 embedding comparison"
     });
 
+    // Customer-managed key, not AWS-owned — a hard compliance requirement,
+    // not a preference. Mirrors VectorStoreStack's identical key + grant
+    // setup exactly, including the same two-principal, ten-action KMS grant
+    // proven to be what ASE's provisioning actually needs beyond AOSS's own
+    // base encryption grant — confirmed working end-to-end on this exact
+    // collection (real semantic_enrichment index, real search results,
+    // verified via CloudTrail to involve zero Bedrock calls). An earlier
+    // isolated throwaway-collection test of this same grant did fail one
+    // step later than Classic's ("create ML connector"), but that result
+    // didn't reproduce on this real, deployed collection — most likely a
+    // timing/propagation artifact of testing immediately after grant
+    // creation, not a reliable NextGen-specific gap. If ASE ever stops
+    // working here, re-verify with a fresh isolated test rather than
+    // assuming this comment's history still applies.
+    const key = new kms.Key(this, "CollectionKey", {
+      description: "Encryption key for the NextGen replica AOSS collection",
+      enableKeyRotation: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY
+    });
+
+    // EncryptionContext-conditioned rather than a bare Resource:"*" grant —
+    // see the identical fix + full comment in VectorStoreStack's own
+    // CollectionKey grant. Verified via the same throwaway-collection
+    // method that this narrowing doesn't break ASE.
+    for (const principal of ["aoss.amazonaws.com", "es.amazonaws.com"]) {
+      key.addToResourcePolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          principals: [new iam.ServicePrincipal(principal)],
+          actions: [
+            "kms:Encrypt",
+            "kms:Decrypt",
+            "kms:ReEncrypt*",
+            "kms:GenerateDataKey*",
+            "kms:GenerateDataKeyPair*",
+            "kms:DescribeKey",
+            "kms:CreateGrant",
+            "kms:ListGrants",
+            "kms:RevokeGrant",
+            "kms:RetireGrant"
+          ],
+          resources: ["*"],
+          conditions: {
+            StringLike: {
+              "kms:EncryptionContext:aws:aoss:arn": `arn:aws:aoss:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:collection/*`
+            }
+          }
+        })
+      );
+    }
+
     const encryptionPolicy = new opensearchserverless.CfnSecurityPolicy(this, "EncryptionPolicy", {
       name: appConfig.nextGenVectorStore.encryptionPolicyName,
       type: "encryption",
       policy: JSON.stringify({
         Rules: [{ ResourceType: "collection", Resource: [`collection/${this.collectionName}`] }],
-        AWSOwnedKey: true
+        AWSOwnedKey: false,
+        KmsARN: key.keyArn
       })
     });
 
@@ -124,8 +182,29 @@ export class NextGenVectorStoreStack extends cdk.Stack {
       policy: JSON.stringify([
         {
           Rules: [
-            { ResourceType: "collection", Resource: [`collection/${this.collectionName}`], Permission: ["aoss:*"] },
-            { ResourceType: "index", Resource: [`index/${this.collectionName}/*`], Permission: ["aoss:*"] }
+            {
+              ResourceType: "collection",
+              Resource: [`collection/${this.collectionName}`],
+              Permission: ["aoss:*", "aoss:CreateCollectionItems", "aoss:DescribeCollectionItems"]
+            },
+            // aoss:* alone was empirically insufficient for ASE's index
+            // schema operations (GetIndexCommand came back AccessDeniedException:
+            // "Access denied to get index" even with the wildcard already in
+            // place) — see the identical fix + full comment in
+            // VectorStoreStack's DataAccessPolicy. Explicit actions added
+            // alongside aoss:*, not replacing it.
+            {
+              ResourceType: "index",
+              Resource: [`index/${this.collectionName}/*`],
+              Permission: ["aoss:*", "aoss:CreateIndex", "aoss:DescribeIndex", "aoss:UpdateIndex", "aoss:DeleteIndex"]
+            },
+            // ASE's service-managed model is its own resource type in
+            // AOSS's access-policy schema.
+            {
+              ResourceType: "model",
+              Resource: [`model/${this.collectionName}/*`],
+              Permission: ["aoss:*", "aoss:CreateMLResource"]
+            }
           ],
           Principal: [props.comparisonPrincipalArn, ...(props.additionalPrincipalArns ?? [])]
         }
@@ -133,6 +212,7 @@ export class NextGenVectorStoreStack extends cdk.Stack {
     });
 
     this.collectionEndpoint = collection.attrCollectionEndpoint;
+    this.collectionId = collection.attrId;
 
     new cdk.CfnOutput(this, "CollectionEndpointOutput", {
       description: "NextGen collection endpoint for the embedding comparison script",

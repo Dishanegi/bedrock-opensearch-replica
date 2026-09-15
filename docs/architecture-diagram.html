@@ -1,0 +1,279 @@
+<title>Bedrock–OpenSearch Replica Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --ink: #14181f;
+    --ink-soft: #4b5563;
+    --ink-faint: #7b8494;
+    --border: #dde2e9;
+    --border-strong: #b9c2d1;
+    --classic: #3f6690;
+    --classic-bg: #eaf0f6;
+    --nextgen: #167a63;
+    --nextgen-bg: #e7f5f1;
+    --accent: #a86a16;
+    --shadow: 0 1px 2px rgba(20,24,31,0.04), 0 10px 30px -14px rgba(20,24,31,0.14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10131a; --surface: #171b24; --ink: #e8eaef; --ink-soft: #a7afbe; --ink-faint: #7a8496;
+      --border: #2a3040; --border-strong: #3a4256;
+      --classic: #8fb4da; --classic-bg: #1a2735;
+      --nextgen: #56c7ab; --nextgen-bg: #12302a;
+      --accent: #e3a548;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 30px -14px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10131a; --surface: #171b24; --ink: #e8eaef; --ink-soft: #a7afbe; --ink-faint: #7a8496;
+    --border: #2a3040; --border-strong: #3a4256;
+    --classic: #8fb4da; --classic-bg: #1a2735;
+    --nextgen: #56c7ab; --nextgen-bg: #12302a;
+    --accent: #e3a548;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 30px -14px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.6;
+  }
+  .page { max-width: 1180px; margin: 0 auto; padding: 3.5rem 1.5rem 5rem; }
+  @media (max-width: 640px) { .page { padding: 2.25rem 1rem 3rem; } }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.76rem; font-weight: 500;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-faint);
+  }
+  h1 {
+    font-family: "Newsreader", Georgia, serif; font-weight: 600; text-wrap: balance;
+    font-size: clamp(1.7rem, 3.6vw, 2.25rem); margin: 0.45rem 0 0.6rem; letter-spacing: -0.01em;
+  }
+  .dek { font-size: 1.02rem; color: var(--ink-soft); max-width: 68ch; margin: 0 0 2.2rem; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 1.3rem;
+    font-size: 0.86rem; color: var(--ink-soft);
+    margin: 0 0 1.1rem;
+  }
+  .legend .item { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .legend .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1.5px solid var(--border-strong); }
+  .sw.classic { background: var(--classic-bg); border-color: var(--classic); }
+  .sw.nextgen { background: var(--nextgen-bg); border-color: var(--nextgen); }
+  .legend .line { display: inline-block; width: 22px; height: 0; border-top: 1.6px solid var(--ink-faint); }
+  .legend .line.dashed { border-top-style: dashed; }
+
+  figure {
+    margin: 0; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.4rem 1.4rem 1.1rem; box-shadow: var(--shadow);
+  }
+  .diagram-scroll { overflow-x: auto; }
+  svg.diagram { display: block; width: 100%; height: auto; min-width: 900px; }
+  svg.diagram text { font-family: "IBM Plex Sans", sans-serif; fill: currentColor; }
+  svg.diagram .mono { font-family: "IBM Plex Mono", monospace; }
+  svg.diagram .lbl-title { font-size: 13.5px; font-weight: 600; }
+  svg.diagram .lbl-sub { font-size: 11px; fill: var(--ink-soft); }
+  svg.diagram .lbl-faint { font-size: 10.5px; fill: var(--ink-faint); }
+  svg.diagram .lbl-arrow { font-size: 10.5px; fill: var(--ink-soft); }
+  svg.diagram .zone-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; fill: var(--ink-faint); }
+  svg.diagram .box { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.4; }
+  svg.diagram .box.dashed-box { stroke-dasharray: 3 3; }
+  svg.diagram .box.classic { fill: var(--classic-bg); stroke: var(--classic); }
+  svg.diagram .box.nextgen { fill: var(--nextgen-bg); stroke: var(--nextgen); }
+  svg.diagram .zone { fill: none; stroke: var(--border-strong); stroke-width: 1.4; stroke-dasharray: 5 4; }
+  svg.diagram .arrow { fill: none; stroke: var(--ink-faint); stroke-width: 1.4; }
+  svg.diagram .arrow.dashed { stroke-dasharray: 4 3; }
+  svg.diagram .arrow.dotted { stroke-dasharray: 1.5 3; }
+  svg.diagram marker path { fill: var(--ink-faint); }
+
+  figcaption {
+    font-size: 0.88rem; color: var(--ink-soft); margin-top: 1rem;
+    padding-top: 0.9rem; border-top: 1px solid var(--border); max-width: 78ch;
+  }
+
+  .notes { margin-top: 2rem; font-size: 0.92rem; color: var(--ink-soft); }
+  .notes h2 {
+    font-family: "Newsreader", serif; font-size: 1.15rem; font-weight: 600; color: var(--ink);
+    margin: 0 0 0.7rem;
+  }
+  .notes ul { margin: 0; padding-left: 1.2rem; max-width: 68ch; }
+  .notes li { margin-bottom: 0.55rem; }
+  .notes code { font-family: "IBM Plex Mono", monospace; font-size: 0.88em; background: var(--classic-bg); padding: 0.08em 0.35em; border-radius: 4px; }
+
+  footer { margin-top: 2.6rem; padding-top: 1.2rem; border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--ink-faint); }
+</style>
+
+<div class="page">
+  <span class="eyebrow">bedrock-opensearch-replica &middot; system map</span>
+  <h1>Three ways in, one shared spine</h1>
+  <p class="dek">How the 8 CDK stacks actually connect: an on-demand batch run, a browser session reached through a bastion, and a laptop-direct path used only for testing the NextGen collection.</p>
+
+  <div class="legend">
+    <span class="item"><span class="sw classic"></span>Classic collection (customer-managed KMS)</span>
+    <span class="item"><span class="sw nextgen"></span>NextGen collection (own customer-managed KMS, added for ASE)</span>
+    <span class="item"><span class="line"></span>direct network path</span>
+    <span class="item"><span class="line dashed"></span>via PrivateLink / cross-boundary</span>
+  </div>
+
+  <figure>
+    <div class="diagram-scroll">
+      <svg class="diagram" viewBox="0 0 1620 825" role="img" aria-label="Diagram showing the laptop reaching DashboardStack through an SSM bastion and internal ALB, ComputeStack running on-demand, both compute nodes sharing one IAM role and a shared VPC endpoints cluster (including a third, AZ-restricted AOSS control-plane endpoint for Automatic Semantic Enrichment) that fans out via PrivateLink to Bedrock, the Classic and NextGen OpenSearch collections, S3, DynamoDB, and ECR, with both the Classic and NextGen collections now connected to their own customer-managed KMS key, and NextGen additionally reachable by a direct public path for laptop testing.">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z"></path>
+          </marker>
+        </defs>
+
+        <!-- Zone: VPC -->
+        <rect class="zone" x="220" y="40" width="900" height="725" rx="12"></rect>
+        <text class="zone-label mono" x="244" y="66">VPC &mdash; PRIVATE-ISOLATED (NO NAT / IGW)</text>
+
+        <!-- Zone: Regional -->
+        <rect class="zone" x="1160" y="60" width="360" height="725" rx="12"></rect>
+        <text class="zone-label mono" x="1184" y="86">REGIONAL AWS SERVICES</text>
+
+        <!-- Laptop actor -->
+        <rect class="box" x="30" y="330" width="160" height="90" rx="8"></rect>
+        <text class="lbl-title" x="110" y="368" text-anchor="middle">You</text>
+        <text class="lbl-sub" x="110" y="386" text-anchor="middle">laptop, outside AWS</text>
+
+        <!-- IAM (full width, dashed = not a data-flow node) -->
+        <rect class="box dashed-box" x="260" y="90" width="840" height="60" rx="8"></rect>
+        <text class="lbl-title" x="680" y="115" text-anchor="middle">IamStack</text>
+        <text class="lbl-sub" x="680" y="133" text-anchor="middle">Task Role + Execution Role &mdash; shared by ComputeStack and DashboardStack</text>
+
+        <!-- ComputeStack -->
+        <rect class="box" x="350" y="190" width="300" height="90" rx="8"></rect>
+        <text class="lbl-title" x="500" y="216" text-anchor="middle">ComputeStack</text>
+        <text class="lbl-sub" x="500" y="234" text-anchor="middle">Fargate task &middot; on-demand</text>
+        <text class="lbl-faint mono" x="500" y="250" text-anchor="middle">app/src/index.ts</text>
+        <text class="lbl-faint" x="500" y="266" text-anchor="middle">invoked via aws ecs run-task</text>
+
+        <!-- Bastion -->
+        <rect class="box" x="260" y="330" width="200" height="90" rx="8"></rect>
+        <text class="lbl-title" x="360" y="362" text-anchor="middle">BastionStack</text>
+        <text class="lbl-sub" x="360" y="380" text-anchor="middle">EC2 &middot; SSM-only</text>
+        <text class="lbl-faint" x="360" y="396" text-anchor="middle">no public IP</text>
+
+        <!-- ALB -->
+        <rect class="box" x="500" y="330" width="200" height="90" rx="8"></rect>
+        <text class="lbl-title" x="600" y="368" text-anchor="middle">Internal ALB</text>
+        <text class="lbl-sub" x="600" y="386" text-anchor="middle">internetFacing: false</text>
+
+        <!-- DashboardStack -->
+        <rect class="box" x="740" y="330" width="300" height="90" rx="8"></rect>
+        <text class="lbl-title" x="890" y="356" text-anchor="middle">DashboardStack</text>
+        <text class="lbl-sub" x="890" y="374" text-anchor="middle">Fargate service &middot; always-on</text>
+        <text class="lbl-faint mono" x="890" y="390" text-anchor="middle">dashboard/src/server.ts</text>
+        <text class="lbl-faint" x="890" y="406" text-anchor="middle">Classic + NextGen, side by side</text>
+
+        <!-- VPC endpoints cluster -->
+        <rect class="box" x="260" y="520" width="840" height="230" rx="8"></rect>
+        <text class="lbl-title mono" x="284" y="546">VPC ENDPOINTS</text>
+        <text class="lbl-sub" x="284" y="570">Interface &middot; bedrock-runtime</text>
+        <text class="lbl-sub" x="284" y="590">Interface &middot; AOSS Classic VpcEndpoint (data-plane)</text>
+        <text class="lbl-sub" x="284" y="610">Interface &middot; AOSS NextGen &mdash; com.amazonaws.&lt;region&gt;.aoss-data (data-plane)</text>
+        <text class="lbl-sub" x="284" y="630">Interface &middot; AOSS control-plane &mdash; com.amazonaws.&lt;region&gt;.aoss (ASE CreateIndex/GetIndex &middot; single-AZ)</text>
+        <text class="lbl-sub" x="284" y="650">Interface &middot; ecr.api / ecr.dkr</text>
+        <text class="lbl-sub" x="284" y="670">Interface &middot; ssm / ssmmessages / ec2messages</text>
+        <text class="lbl-sub" x="284" y="690">Gateway &middot; S3 &middot; DynamoDB</text>
+        <text class="lbl-faint" x="284" y="720">used by ComputeStack, DashboardStack, and BastionStack&rsquo;s SSM control channel</text>
+
+        <!-- Regional service boxes -->
+        <rect class="box" x="1200" y="100" width="280" height="70" rx="8"></rect>
+        <text class="lbl-title" x="1340" y="128" text-anchor="middle">Bedrock</text>
+        <text class="lbl-sub" x="1340" y="146" text-anchor="middle">Titan Embed Text v2</text>
+
+        <rect class="box classic" x="1200" y="200" width="280" height="90" rx="8"></rect>
+        <text class="lbl-title" x="1340" y="226" text-anchor="middle">OpenSearch &middot; Classic</text>
+        <text class="lbl-sub" x="1340" y="244" text-anchor="middle">VectorStoreStack</text>
+        <text class="lbl-faint mono" x="1340" y="260" text-anchor="middle">replica-vector-store</text>
+        <text class="lbl-faint" x="1340" y="276" text-anchor="middle">Engine: hnsw/faiss configurable</text>
+
+        <rect class="box nextgen" x="1200" y="320" width="280" height="90" rx="8"></rect>
+        <text class="lbl-title" x="1340" y="346" text-anchor="middle">OpenSearch &middot; NextGen</text>
+        <text class="lbl-sub" x="1340" y="364" text-anchor="middle">NextGenVectorStoreStack</text>
+        <text class="lbl-faint mono" x="1340" y="380" text-anchor="middle">embed-compare-nextgen</text>
+        <text class="lbl-faint" x="1340" y="396" text-anchor="middle">Engine property unsupported</text>
+
+        <rect class="box" x="1200" y="440" width="280" height="60" rx="8"></rect>
+        <text class="lbl-title" x="1340" y="464" text-anchor="middle">S3 bucket</text>
+        <text class="lbl-faint" x="1340" y="482" text-anchor="middle">DataStack &middot; read: Compute &middot; read/write: Dashboard</text>
+
+        <rect class="box" x="1200" y="520" width="280" height="60" rx="8"></rect>
+        <text class="lbl-title" x="1340" y="544" text-anchor="middle">DynamoDB</text>
+        <text class="lbl-faint" x="1340" y="562" text-anchor="middle">harness-findings &middot; same access split as S3</text>
+
+        <rect class="box" x="1200" y="600" width="280" height="55" rx="8"></rect>
+        <text class="lbl-title" x="1340" y="632" text-anchor="middle">ECR</text>
+
+        <rect class="box" x="1200" y="675" width="280" height="55" rx="8"></rect>
+        <text class="lbl-title" x="1340" y="698" text-anchor="middle">KMS</text>
+        <text class="lbl-faint" x="1340" y="715" text-anchor="middle">customer-managed key &middot; one per collection</text>
+
+        <!-- Arrows: IAM assumed-by -->
+        <path class="arrow dotted" d="M 500,150 L 500,190" marker-end="url(#arrow)"></path>
+        <text class="lbl-arrow" x="508" y="173">assumed by</text>
+        <path class="arrow dotted" d="M 890,150 L 890,330" marker-end="url(#arrow)"></path>
+        <text class="lbl-arrow" x="898" y="245">assumed by</text>
+
+        <!-- Laptop -> Bastion -->
+        <path class="arrow" d="M 190,375 L 260,375" marker-end="url(#arrow)"></path>
+        <text class="lbl-arrow" x="196" y="368">aws ssm start-session</text>
+
+        <!-- Bastion -> ALB -->
+        <path class="arrow" d="M 460,375 L 500,375" marker-end="url(#arrow)"></path>
+        <text class="lbl-arrow mono" x="463" y="368" font-size="9.5">:80</text>
+
+        <!-- ALB -> Dashboard -->
+        <path class="arrow" d="M 700,375 L 740,375" marker-end="url(#arrow)"></path>
+        <text class="lbl-arrow mono" x="703" y="368" font-size="9.5">:3000</text>
+
+        <!-- Bastion -> Endpoints (ssm control channel) -->
+        <path class="arrow dotted" d="M 360,420 L 360,520" marker-end="url(#arrow)"></path>
+        <text class="lbl-arrow" x="368" y="475" font-size="9.5">ssm control</text>
+
+        <!-- ComputeStack -> Endpoints -->
+        <path class="arrow" d="M 480,280 L 480,520" marker-end="url(#arrow)"></path>
+
+        <!-- DashboardStack -> Endpoints -->
+        <path class="arrow" d="M 890,420 L 890,520" marker-end="url(#arrow)"></path>
+
+        <!-- Endpoints fan-out to regional boxes (dashed, PrivateLink) -->
+        <path class="arrow dashed" d="M 1100,545 C 1150,545 1150,135 1200,135" marker-end="url(#arrow)"></path>
+        <path class="arrow dashed" d="M 1100,565 C 1160,565 1160,245 1200,245" marker-end="url(#arrow)"></path>
+        <path class="arrow dashed" d="M 1100,600 C 1170,600 1170,365 1200,365" marker-end="url(#arrow)"></path>
+        <path class="arrow dashed" d="M 1100,655 C 1150,655 1150,470 1200,470" marker-end="url(#arrow)"></path>
+        <path class="arrow dashed" d="M 1100,675 C 1140,675 1140,550 1200,550" marker-end="url(#arrow)"></path>
+        <path class="arrow dashed" d="M 1100,695 C 1140,695 1140,627 1200,627" marker-end="url(#arrow)"></path>
+
+        <!-- Classic -> KMS (NextGen has the identical relationship to its own, separate key) -->
+        <path class="arrow dashed" d="M 1480,245 L 1528,245 L 1528,700 L 1480,700" marker-end="url(#arrow)"></path>
+        <text class="lbl-arrow" x="1541" y="473" transform="rotate(90 1541,473)" text-anchor="middle">encrypt / decrypt (grant: aoss + es principals)</text>
+
+        <!-- Laptop -> NextGen direct (routed over the top, then down the outer margin, clear of every regional box) -->
+        <path class="arrow dashed" d="M 110,330 L 110,18 L 1568,18 L 1568,365 L 1480,365" marker-end="url(#arrow)"></path>
+        <text class="lbl-arrow" x="840" y="13" text-anchor="middle">public access &middot; laptop / dev testing only, IAM-gated &mdash; not the production path</text>
+
+      </svg>
+    </div>
+    <figcaption>ComputeStack and DashboardStack share one IAM role and one VPC-endpoint cluster, but reach it differently: the connector runs on demand and exits; the dashboard stays up behind a bastion-only ALB. Both hit the same Bedrock endpoint and both OpenSearch collections through the identical PrivateLink fan-out. KMS is no longer asymmetric &mdash; ASE gave NextGen its own customer-managed key, matching Classic's &mdash; and ASE also added the third, AZ-restricted AOSS control-plane endpoint in the cluster above. The one remaining structural asymmetry is the public NextGen path kept open for laptop testing.</figcaption>
+  </figure>
+
+  <div class="notes">
+    <h2>Three things this map makes obvious that the prose doesn't</h2>
+    <ul>
+      <li><strong>One role, two very different lifetimes.</strong> <code>ComputeStack</code> and <code>DashboardStack</code> assume the exact same <code>IamStack</code> task role, but one is an ephemeral batch job and the other is a standing service behind a load balancer &mdash; the shared identity is easy to miss reading the stacks in isolation.</li>
+      <li><strong>KMS parity is new, and ASE is why.</strong> Both collections now carry their own customer-managed key &mdash; NextGen switched off <code>AWSOwnedKey: true</code> when ASE landed &mdash; with an identical grant to two principals: <code>aoss.amazonaws.com</code> for ordinary encryption, plus <code>es.amazonaws.com</code> because ASE's ML pipeline runs on that underlying service. That second principal, and the third AOSS control-plane endpoint in the VPC cluster above, exist only because of ASE.</li>
+      <li><strong>There are two ways to reach the dashboard's data, not one.</strong> The production path is laptop &rarr; SSM &rarr; bastion &rarr; internal ALB &rarr; dashboard. The NextGen collection is <em>also</em> reachable directly and publicly (IAM-gated) &mdash; a leftover from when it was a standalone laptop-testing stack, now living alongside the VPC-only production path.</li>
+    </ul>
+  </div>
+
+  <footer>Generated from the current CDK source (<code>bin/app.ts</code>, <code>lib/*.ts</code>) &mdash; bedrock-opensearch-replica, updated September 15, 2026 for the ASE (Automatic Semantic Enrichment) changes.</footer>
+</div>

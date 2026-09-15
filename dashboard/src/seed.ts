@@ -217,12 +217,23 @@ async function readFromDynamoDb(tableName: string): Promise<Finding[]> {
   );
 }
 
+export interface AseAvailability {
+  supported: boolean;
+  reason?: string;
+}
+
 export interface SeedProgress {
   status: "idle" | "running" | "complete" | "error";
   phase: string;
   indexed: number;
   total: number;
   error?: string;
+  /** Set once ensureAseIndex() has run for both collections — lets the
+   *  dashboard show, right after seeding, whether ASE actually provisioned
+   *  on each tier (NextGen support is an open question — see
+   *  docs/comparison.md) rather than only discovering it on the first
+   *  /api/compare call. */
+  ase?: { classic: AseAvailability; nextGen: AseAvailability };
 }
 
 let progress: SeedProgress = { status: "idle", phase: "", indexed: 0, total: 0 };
@@ -283,7 +294,13 @@ export async function runSeedJob(
 
     progress.phase = "preparing indexes";
     await Promise.all([classic.ensureIndex(embeddingDimension), nextGen.ensureIndex(embeddingDimension)]);
-    await Promise.all([classic.deleteAll(), nextGen.deleteAll()]);
+    // ASE indexes are separate from the dense ones (see ensureAseIndex's
+    // comment) and provisioned in parallel — a 400 here (e.g. on NextGen)
+    // is captured as "unsupported", not thrown, so seeding never fails just
+    // because one tier can't provision ASE.
+    const [classicAse, nextGenAse] = await Promise.all([classic.ensureAseIndex(), nextGen.ensureAseIndex()]);
+    progress.ase = { classic: classicAse, nextGen: nextGenAse };
+    await Promise.all([classic.deleteAll(), nextGen.deleteAll(), classic.deleteAllAse(), nextGen.deleteAllAse()]);
 
     progress.phase = "embedding + indexing";
     for (const finding of allFindings) {
@@ -291,6 +308,11 @@ export async function runSeedJob(
       const embedding = await generateEmbedding(text);
       await classic.indexDocument(finding, embedding);
       await nextGen.indexDocument(finding, embedding);
+      // Raw text only — ASE generates its own sparse embedding on ingest,
+      // no Bedrock call needed for this half of the write. No-ops on
+      // whichever collection(s) ensureAseIndex found unsupported above.
+      await classic.indexAseDocument(finding);
+      await nextGen.indexAseDocument(finding);
       progress.indexed++;
     }
 

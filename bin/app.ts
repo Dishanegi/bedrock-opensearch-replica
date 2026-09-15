@@ -143,8 +143,10 @@ const dashboardStack = new DashboardStack(app, "DashboardStack", {
   aossEndpointSgId: networkStack.aossEndpointSgId,
   classicOpensearchEndpoint: vectorStoreStack.collectionEndpoint,
   classicIndexName: appConfig.vectorStore.indexName,
+  classicCollectionId: vectorStoreStack.collectionId,
   nextGenOpensearchEndpoint: nextGenVectorStoreStack.collectionEndpoint,
   nextGenIndexName: appConfig.dashboard.nextGenIndexName,
+  nextGenCollectionId: nextGenVectorStoreStack.collectionId,
   documentsBucketName: dataStack.documentsBucket.bucketName,
   documentsPrefix: dataStack.documentsPrefix,
   documentsTableName: dataStack.documentsTable.tableName

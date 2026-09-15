@@ -17,6 +17,12 @@ export interface DashboardStackProps extends cdk.StackProps {
   readonly classicIndexName: string;
   readonly nextGenOpensearchEndpoint: string;
   readonly nextGenIndexName: string;
+  /** Collection IDs (distinct from names/endpoints) — needed by
+   *  CollectionClient's ASE index provisioning, which goes through the
+   *  opensearchserverless control-plane API's CreateIndex/GetIndex/
+   *  DeleteIndex operations (keyed by id, not name/endpoint). */
+  readonly classicCollectionId: string;
+  readonly nextGenCollectionId: string;
   /** DataStack's bucket/table — the dashboard's seed job writes generated
    *  findings here (real S3 + DynamoDB, not just in-memory) and reads them
    *  back before indexing into OpenSearch, same round-trip app/src/index.ts's
@@ -127,8 +133,10 @@ export class DashboardStack extends cdk.Stack {
         EMBEDDING_DIMENSION: String(appConfig.vectorStore.embeddingDimension),
         CLASSIC_OPENSEARCH_ENDPOINT: props.classicOpensearchEndpoint,
         CLASSIC_INDEX_NAME: props.classicIndexName,
+        CLASSIC_COLLECTION_ID: props.classicCollectionId,
         NEXTGEN_OPENSEARCH_ENDPOINT: props.nextGenOpensearchEndpoint,
         NEXTGEN_INDEX_NAME: props.nextGenIndexName,
+        NEXTGEN_COLLECTION_ID: props.nextGenCollectionId,
         DOCUMENTS_BUCKET_NAME: props.documentsBucketName,
         DOCUMENTS_PREFIX: props.documentsPrefix,
         DOCUMENTS_TABLE_NAME: props.documentsTableName,

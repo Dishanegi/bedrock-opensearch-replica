@@ -7,6 +7,9 @@ dist/
 *.d.ts
 *.d.ts.map
 !jest.config.js
+# Hand-written frontend source (not compiled output) — served as-is by
+# dashboard/src/server.ts's express.static(), never built from TS.
+!dashboard/public/app.js
 
 # CDK
 cdk.out/

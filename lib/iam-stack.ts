@@ -75,6 +75,28 @@ export class IamStack extends cdk.Stack {
       })
     );
 
+    // Automatic Semantic Enrichment (ASE) requires provisioning the index
+    // itself through the opensearchserverless control-plane API's own
+    // Create/Get/Update/DeleteIndex operations (aws opensearchserverless
+    // create-index, or CreateIndexCommand via @aws-sdk/client-opensearchserverless)
+    // rather than a generic OpenSearch data-plane PUT — confirmed against
+    // AWS's ASE documentation IAM example, which lists exactly these five
+    // actions. aoss:CreateMLResource covers the service-managed ML model ASE
+    // provisions per index; the *Index actions cover the schema operation
+    // that actually turns semantic_enrichment on. Required here on the
+    // identity policy in addition to being allowed by the AOSS data-access
+    // policy itself (VectorStoreStack/NextGenVectorStoreStack's
+    // DataAccessPolicy already wildcards aoss:* on collection/index/model
+    // there) — AOSS enforces both layers independently, so granting only one
+    // is not enough.
+    this.taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AossSemanticEnrichment",
+        actions: ["aoss:CreateMLResource", "aoss:CreateIndex", "aoss:GetIndex", "aoss:UpdateIndex", "aoss:DeleteIndex"],
+        resources: [`arn:aws:aoss:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:collection/*`]
+      })
+    );
+
     // Standard ECS execution role — pull the image, write logs. Nothing
     // application-specific here.
     this.executionRole = new iam.Role(this, "ConnectorExecutionRole", {

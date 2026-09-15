@@ -1,30 +1,24 @@
 # bedrock-opensearch-replica
 
-A standalone, minimal replica of the Bedrock → OpenSearch Serverless (AOSS)
-connection pattern found in `pentesting-agentic-harness-infra`'s
-`kg.ts`/`knowledge-graph-stack.ts`, plus the two upstream data-source
-patterns (S3, DynamoDB) that feed it in the reference codebase —
-deliberately without the surrounding platform (no ECS job orchestration
-beyond a single on-demand task, no Neptune/graph side, no skills system).
+A small, standalone project for experimenting with the general shape of a
+Bedrock → OpenSearch Serverless (AOSS) connector — embed text via Bedrock,
+index it into AOSS, backed by S3/DynamoDB as data sources. It's loosely
+inspired by patterns used in `pentesting-agentic-harness-infra`, but this
+is **not** an exact copy or port of that codebase: it's a from-scratch
+implementation, built to learn/experiment with this connection pattern in
+isolation, deliberately without the surrounding platform (no ECS job
+orchestration beyond a single on-demand task, no Neptune/graph side, no
+skills system, no internal auth/tooling).
+
+What started as that small connector has since grown two additions,
+layered on top rather than replacing it: a **side-by-side evaluation
+dashboard** (`dashboard/`) for comparing Classic vs NextGen OpenSearch
+Serverless collections, and a throwaway **NextGen comparison collection**
+(`NextGenVectorStoreStack`) it queries against. See "Beyond the core
+connector" below for both.
 
 **Nothing in this project has been deployed.** It's infrastructure + code
 for you to review and deploy yourself.
-
-## Production reference — exact names/shapes this replica mirrors
-
-| | Production (`pentesting-agentic-harness-infra`) | This replica |
-|---|---|---|
-| DynamoDB table | `harness-findings` (partition key `findingId`) | Same name, same partition key — see `lib/config.ts` / `lib/data-stack.ts` |
-| S3 source file | `jobs/{assetSlug}/FINDINGS_SUMMARY.json` (top-level `{findings: [...], fixUnits: [...], netraFailedCount}`) | Same path shape, same `findings` array extraction — see `app/src/s3-source.ts` |
-| OpenSearch index | `harness-findings-kg` | `replica-findings-kg` — deliberately a different name so this demo collection is never mistaken for the real one |
-| Index mapping | `embedding` (`knn_vector`, dim 1024, `hnsw`/`faiss`) + `findingId`/`title`/`severity`/`assetName`/`jobId`/`jobType`/`cwe`/`createdAt` | Identical field-for-field — see `app/src/opensearch.ts`'s `ensureIndex()` |
-| `textForEmbedding` construction | `` `${title} ${severity} ${cwe ?? ""} ${assetName}`.slice(0, 2000) `` (`kg.ts:983-988`) | Identical — `app/src/embed.ts`'s `buildEmbeddingText()` |
-| Idempotent re-index | `clearExistingEmbeddings(jobId)` — paginated `search_after` delete before every re-embed, since AOSS Serverless has no `_delete_by_query` (`kg.ts:315-372`) | Ported logic-for-logic — `app/src/opensearch.ts`'s `clearExistingEmbeddings()`, called once per `jobId` group in `app/src/index.ts` before that group's findings are (re-)embedded |
-
-Deliberately **not** matched: retry/backoff on Bedrock calls, bulk-batching
-writes in groups of 50, and S3/DynamoDB read pagination. Production's exact
-values for those are documented in "What's intentionally left out" below,
-so you know what to add before treating this as anything beyond a demo.
 
 **Portability constraint (standing rule for this project):** this is meant
 to run in environments that do **not** have access to GS-internal packages
@@ -38,6 +32,14 @@ proxy, the custom `AppStagingSynthesizer`/`CftCustomStagingStack` factory,
 etc.) — those were all deliberately left out, not overlooked.
 
 ## Architecture
+
+The diagram and table below are deliberately scoped to `ComputeStack`'s own
+connector task — the minimal core this replica started as. For the complete
+picture (all 8 stacks, `DashboardStack`/`BastionStack`/`NextGenVectorStoreStack`,
+and the ASE-only control-plane endpoint), see
+**[`docs/architecture-diagram.md`](docs/architecture-diagram.md)** (mermaid,
+renders on GitHub/GitLab) or its
+[published visual version](https://claude.ai/code/artifact/710a3208-693a-462d-b303-cec7deec7496).
 
 ```
                               AWS ACCOUNT
@@ -156,53 +158,204 @@ on AWS's own backend, using the grant configured in `VectorStoreStack`.
 | **DynamoDB Table** | The second raw data source — the `harness-findings` table, scanned in full on every run for finding items (`findingId`, `title`, `severity`, `assetName`, `jobId`, `cwe`, `createdAt`). | DynamoDB **gateway** endpoint, authorized by `table.grantReadData(taskRole)` |
 | **ECR Repository** | Hosts the container image the Fargate task actually runs. Only touched at task *launch*, not during the task's own logic. | `ecr.api` + `ecr.dkr` interface endpoints, authorized by the execution role's `AmazonECSTaskExecutionRolePolicy` |
 | **CloudWatch Logs** | Receives every `console.log()` line the container prints — the only visibility you have into what a run actually did. | `logs` interface endpoint, authorized by the same execution-role managed policy as ECR |
-| **KMS Key** | Encrypts the OpenSearch collection's data at rest. The *only* service in this list the Fargate task never calls directly — AOSS calls it on your behalf, on AWS's own infrastructure. | No task-side connection at all; authorized via a KMS Grant to the `aoss.amazonaws.com` service principal, configured in `VectorStoreStack` |
+| **KMS Key** | Encrypts the OpenSearch collection's data at rest. The *only* service in this list the Fargate task never calls directly — AOSS calls it on your behalf, on AWS's own infrastructure. | No task-side connection at all; authorized via a resource policy statement granting both `aoss.amazonaws.com` and `es.amazonaws.com` (the second added for the dashboard's ASE ML pipeline, which runs on the same underlying service `es.amazonaws.com` represents), configured in `VectorStoreStack`. `NextGenVectorStoreStack` now provisions its own separate customer-managed key with the identical grant — KMS usage is no longer Classic-only |
 | **IAM (Task Role + Execution Role)** | Not a data-flow node — it's the permission layer every arrow above depends on. Task Role is what the running container's AWS SDK calls authenticate as; Execution Role is what ECS itself uses to launch the task (image pull, log setup) before your code even starts. | N/A — this is *how* every other connection is authorized, not a connection itself |
+
+Beyond what's drawn above, `NetworkStack` provisions four more interface
+endpoints (`ssm`/`ssmmessages`/`ec2messages`) plus a second AOSS interface
+endpoint for the **NextGen** collection, plus a third, separate AOSS
+**control-plane** interface endpoint (`com.amazonaws.<region>.aoss`, distinct
+from the data-plane `.aoss-data` endpoint — AZ-restricted to a single AZ,
+see the comment in `network-stack.ts`). The first three exist for
+`DashboardStack`'s ECS Exec support and `BastionStack`'s SSM port-forwarding;
+the control-plane endpoint exists for the dashboard's ASE (Automatic
+Semantic Enrichment) feature, which calls `CreateIndex`/`GetIndex` against
+that API. None of these are used by the connector. See "Beyond the core
+connector" below for what those two stacks (plus `NextGenVectorStoreStack`)
+add.
 
 ## What this is
 
-- **`bin/app.ts`** + **`lib/*.ts`** — a 5-stack CDK app:
+### Repository layout
+
+```
+bin/app.ts                       CDK entrypoint — wires all 8 stacks + their addDependency() order
+lib/                              one file per stack, plus config.ts (see "Config vs. logic" below)
+├── config.ts                     every tunable value — names, sizing, model ID/dimension
+├── iam-stack.ts                  task/execution roles + both CloudWatch log groups
+├── network-stack.ts              VPC + every VPC endpoint (bedrock, AOSS ×3, ecr, logs, ssm, S3/DDB gateways)
+├── vector-store-stack.ts         Classic AOSS collection — what app/ actually reads/writes
+├── data-stack.ts                 S3 bucket + DynamoDB table (the two data entry points)
+├── compute-stack.ts              ECS cluster + on-demand Fargate task def for app/
+├── nextgen-vector-store-stack.ts NextGen AOSS collection — the dashboard's comparison target
+├── dashboard-stack.ts            always-on Fargate service + internal ALB for dashboard/
+└── bastion-stack.ts              SSM-only EC2 — the only way to reach the dashboard's ALB
+
+app/                              the core connector container (ComputeStack's task)
+└── src/
+    ├── index.ts                  default entrypoint — read → embed → index → smoke-test search
+    ├── embed.ts, opensearch.ts, s3-source.ts, dynamodb-source.ts
+    ├── seed.ts                    npm run seed — synthetic findings into S3/DynamoDB
+    ├── query.ts                   npm run query — ad hoc embed + k-NN search
+    └── seed-and-ingest.ts         chains both; ingest half currently DEFERRED (see file header)
+
+dashboard/                        the evaluation dashboard container (DashboardStack's service)
+├── README.md                     dashboard-specific architecture, API surface, security notes
+├── src/
+│   ├── server.ts                 Express app — /api/health, /api/seed(+/status), /api/compare(-ase)
+│   ├── opensearch.ts             CollectionClient — keyword/vector/hybrid/ASE against one collection
+│   └── embed.ts, seed.ts
+├── public/                       hand-written frontend, served as-is (not compiled from TS)
+│   ├── index.html
+│   └── app.js
+└── benchmark/                    NOT deployed — run manually against a live dashboard (see below)
+    ├── queries.ts                 the labeled query set
+    ├── run-benchmark.ts           scores dense/ASE/hybrid/keyword per the plan doc below
+    └── results/                   saved output of the most recent run (report.md + results.json)
+
+docs/                              research, POC results, and forward-looking proposals (not
+                                   live infrastructure) — see docs/README.md for the full index
+├── README.md                      index + status of everything below
+├── comparison.md                  AOSS vs Vertex vs Vespa bake-off + the ASE deep dive/migration plan
+├── architecture-diagram.md/.html  the full 8-stack system map (mermaid + designed/visual version)
+├── poc-report.md/.html            live Classic-vs-NextGen POC test results
+├── embedding-model-research.md    the evidence behind "Titan isn't proven best"
+├── alternative-platforms-research.md
+├── embedding-migration-plan.md
+└── sparse-vs-dense-benchmark-plan.md  methodology dashboard/benchmark/ implements
+```
+
+- **`bin/app.ts`** + **`lib/*.ts`** — an 8-stack CDK app, instantiated in
+  this order (each `addDependency()` call in `bin/app.ts` encodes a real
+  ordering constraint, not just documentation):
   1. `IamStack` — the Fargate task role (Bedrock + AOSS permissions) and
-     execution role. Created first, deliberately, to avoid a circular
-     dependency between `VectorStoreStack` and `ComputeStack` (see the
-     comment at the top of `lib/iam-stack.ts`).
+     execution role, **plus both connector and dashboard CloudWatch log
+     groups** (kept here, not in `ComputeStack`/`DashboardStack`, purely to
+     avoid a circular dependency — see the comment at the top of
+     `lib/iam-stack.ts`). Created first, deliberately, so `VectorStoreStack`
+     and `ComputeStack` never need each other's outputs directly.
   2. `NetworkStack` — a VPC (no NAT/IGW — fully private) with interface VPC
-     endpoints for `bedrock-runtime` and `aoss`, plus **gateway** endpoints
-     for S3 and DynamoDB (free, and the only way a fully-isolated subnet
-     can reach those two services without a NAT gateway).
-  3. `VectorStoreStack` — the OpenSearch Serverless collection
+     endpoints for `bedrock-runtime`, the AOSS **Classic** collection
+     (`AWS::OpenSearchServerless::VpcEndpoint`), the AOSS **NextGen**
+     collection (a separate, standard interface endpoint — NextGen resolves
+     on a different domain than Classic), `ecr.api`/`ecr.dkr`, CloudWatch
+     Logs, and `ssm`/`ssmmessages`/`ec2messages` (for ECS Exec + the
+     bastion's SSM port-forwarding); plus **gateway** endpoints for S3 and
+     DynamoDB (free, and the only way a fully-isolated subnet can reach
+     those two services without a NAT gateway).
+  3. `VectorStoreStack` — the **Classic** OpenSearch Serverless collection
      (`Type: VECTORSEARCH`) plus its three required policies (encryption,
-     network, data access).
+     network, data access) — this is the collection the core connector
+     (`app/`) actually reads/writes.
   4. `DataStack` — the two **data entry points**: an S3 bucket
      (`FINDINGS_SUMMARY.json` files under a `jobs/{assetSlug}/` prefix) and
      a DynamoDB table (`harness-findings` — `findingId` partition key, plus
      `title`/`severity`/`assetName`/`jobId`/`cwe`/`createdAt`, scanned in
      full). Standalone — no dependency on the other stacks; the task role is
-     granted least-privilege read access to both via `bucket.grantRead()`/
-     `table.grantReadData()` in `bin/app.ts`, after both `IamStack` and
-     `DataStack` exist.
+     granted least-privilege **read and write** access to both via
+     `bucket.grantRead()`/`grantWrite()` and `table.grantReadData()`/
+     `grantWriteData()` in `bin/app.ts`, after both `IamStack` and
+     `DataStack` exist. (Write access was added for the dashboard's seed
+     job below — the connector itself only ever reads.)
   5. `ComputeStack` — an ECS cluster and a single Fargate task definition
-     for the connector container. **Not** a running Service and **not**
-     wired to any scheduler — meant to be invoked on demand.
-- **`app/`** — the connector code that runs inside the Fargate container:
-  reads every finding from S3 + DynamoDB, groups them by `jobId`, clears any
-  existing embeddings for each `jobId` (idempotent re-index), embeds each
-  finding via Bedrock, writes each to OpenSearch, then runs one k-NN search
-  as a smoke test. Falls back to a single hardcoded sample finding if both
-  sources are empty, so the container is still runnable with zero data
-  seeded.
+     for the connector container, built straight from `app/` via
+     `ecs.ContainerImage.fromAsset()` (CDK builds the Docker image and
+     pushes it to a CDK-managed bootstrap ECR repo automatically on every
+     `cdk deploy` — no manual ECR repo or `docker push` step). **Not** a
+     running Service and **not** wired to any scheduler — meant to be
+     invoked on demand.
+  6. `NextGenVectorStoreStack` — a second, standalone OpenSearch Serverless
+     collection on the **NextGen** generation, for the Classic-vs-NextGen
+     comparison the dashboard runs. See "Beyond the core connector" below.
+  7. `DashboardStack` — the evaluation dashboard's own ECS Fargate
+     **service** (long-running, unlike `ComputeStack`) behind an internal
+     ALB. See "Beyond the core connector" below.
+  8. `BastionStack` — a single SSM-managed EC2 instance with no other
+     purpose, so a laptop can reach the internal-only dashboard ALB. See
+     "Beyond the core connector" below.
+- **`app/`** — the connector code that runs inside `ComputeStack`'s
+  container: reads every finding from S3 + DynamoDB, groups them by
+  `jobId`, clears any existing embeddings for each `jobId` (idempotent
+  re-index), embeds each finding via Bedrock, writes each to OpenSearch,
+  then runs one k-NN search as a smoke test. Falls back to a single
+  hardcoded sample finding if both sources are empty, so the container is
+  still runnable with zero data seeded. Two extra standalone entrypoints
+  live alongside `index.ts` (not run by it, and not `ComputeStack`'s
+  default `CMD`): `seed.ts` (populate S3/DynamoDB with ~dozens of synthetic
+  findings — `npm run seed`) and `query.ts` (embed an ad hoc
+  `QUERY_TEXT` and run a k-NN search against it — `npm run query`,
+  or via an `ecs run-task` command override). `seed-and-ingest.ts` chains
+  seeding into ingestion in one process, though the ingest half is
+  currently commented out (see the `DEFERRED` note at the top of that
+  file).
+
+### Beyond the core connector: dashboard, NextGen comparison, bastion
+
+Three pieces that sit alongside the core connector rather than inside it —
+each is optional to deploy/understand if you only care about the Bedrock↔
+OpenSearch connector pattern itself, but they're real, deployed
+infrastructure now, not just planning docs:
+
+- **`dashboard/`** (`DashboardStack`) — a persistent Express app running as
+  an ECS Fargate *service* (not a one-off task) behind an internal
+  (`internetFacing: false`) ALB, reachable only from inside the VPC. Given
+  a query, it runs keyword (BM25), vector (k-NN, Bedrock/Titan dense),
+  hybrid, and **ASE** (Automatic Semantic Enrichment — AOSS's own
+  service-managed sparse embedding, no Bedrock call) search against *both*
+  the Classic collection (`VectorStoreStack`) and the NextGen collection
+  (`NextGenVectorStoreStack`) simultaneously, and renders all eight result
+  sets (2 collections × 4 modes) side by side. Which collections can
+  actually provision an ASE index was an open question AWS's own docs don't
+  confirm — `CollectionClient.ensureAseIndex()` discovers it live per
+  collection rather than assuming both behave the same, and the UI shows
+  "not available" rather than failing if a tier rejects it. As of the most
+  recent benchmark run (`dashboard/benchmark/`), that turned out asymmetric
+  in the opposite direction from what was originally suspected: **NextGen's
+  ASE index provisions and returns real results; Classic's is currently
+  denied** — see `dashboard/benchmark/run-benchmark.ts`'s comment and
+  `docs/comparison.md`'s ASE section for the background.
+  Its own "Seed Sample Data" button (`POST /api/seed`) generates ~40
+  synthetic findings, writes them to the *same* S3 bucket/DynamoDB table
+  `DataStack` created, then embeds+indexes them into both collections'
+  dense indexes and separately writes them into both collections' ASE
+  indexes — a separate code path from `app/src/seed.ts` (dashboard has its
+  own `dashboard/src/seed.ts`), but the same real S3/DynamoDB round-trip.
+  Full architecture, API surface, and security notes:
+  **[`dashboard/README.md`](dashboard/README.md)**.
+- **`NextGenVectorStoreStack`** — provisions a second, standalone AOSS
+  collection on the **NextGen** generation (an infrastructure/scaling
+  distinction from Classic, not a "keyword vs vector" one — see
+  `dashboard/README.md` for that clarification). Originally a throwaway
+  stack for a one-off Titan v2 vs Cohere v4 embedding-model comparison —
+  **that comparison script doesn't exist in this repo**; only the
+  collection infrastructure does. In practice today, this collection is
+  the dashboard's "NextGen" side, embedded via the same Titan v2 model as
+  Classic (`dashboard/src/embed.ts`). Reachable both publicly (IAM-gated,
+  for ad hoc testing from a laptop) and from inside the VPC (for
+  `DashboardStack`'s Fargate task), via two separate network-policy rules.
+- **`BastionStack`** — a single `t3.micro` EC2 instance, SSM-managed only
+  (no SSH key, no public IP, no inbound rules at all). Exists solely
+  because ECS Exec (what `DashboardStack`'s Fargate task would otherwise
+  use) can run a shell inside a container but **cannot** port-forward to a
+  remote host — only a real, persistently-registered SSM-managed EC2
+  instance supports the `AWS-StartPortForwardingSessionToRemoteHost`
+  session document needed to reach the internal ALB from a laptop. See the
+  "Reaching the dashboard from your laptop" step under Deploying below.
 
 ### Config vs. logic
 
 `lib/config.ts` holds **every tunable value** — resource names (collection,
 bucket, cluster, log group, the 3 AOSS policy names), sizing (VPC AZ count,
-task CPU/memory, log retention), and the embedding model ID/dimension. It's
+task CPU/memory, log retention), and the embedding model ID/dimension —
+now split across seven top-level sections: `network`, `vectorStore`,
+`nextGenVectorStore`, `data`, `compute`, `dashboard`, and `bastion`. It's
 plain data, deliberately kept free of resource-creation code.
 
 Every stack file (`iam-stack.ts`, `network-stack.ts`, `vector-store-stack.ts`,
-`data-stack.ts`, `compute-stack.ts`) imports from `config.ts` and contains
-only *logic* — which AWS resources to create and how they connect. None of
-them hardcode a name, size, or model ID inline anymore.
+`data-stack.ts`, `compute-stack.ts`, `nextgen-vector-store-stack.ts`,
+`dashboard-stack.ts`, `bastion-stack.ts`) imports from `config.ts` and
+contains only *logic* — which AWS resources to create and how they connect.
+None of them hardcode a name, size, or model ID inline anymore.
 
 **To retune anything — a name, a size, the embedding model — edit
 `lib/config.ts` only.** No stack file should ever need touching just to
@@ -216,46 +369,59 @@ flows all the way through to the running container via an `EMBEDDING_DIMENSION`
 env var, so `app/src/opensearch.ts`'s index schema and the actual CDK config
 can never drift out of sync with each other.
 
-## What's intentionally left out (see the plan this was built from)
+## What's intentionally left out
+
+This is an experimental/learning project, not a production-grade
+connector — several things a real deployment would need are deliberately
+skipped:
 
 - No Neptune / graph relationships — Bedrock↔OpenSearch(+S3/DynamoDB as
   data sources) only.
 - No retry/backoff hardening in `app/src/embed.ts` beyond a TODO comment —
-  the reference `kg.ts` has a 25s timeout + 5-attempt exponential backoff
-  (base 1000ms, doubling, capped at 30s, plus 0-500ms jitter), retried only
-  on `ThrottlingException`/`ServiceUnavailableException`; add that before
-  any real production use.
+  add real exponential-backoff-plus-jitter retry on throttling before any
+  production use.
 - No bulk-batching on OpenSearch writes — `app/src/opensearch.ts`'s
-  `indexDocument()` indexes one document per call. The reference `kg.ts`
-  batches 50 documents per `bulk` request (`OPENSEARCH_BULK_SIZE`) with the
-  same per-chunk retry/backoff as above (max 4 attempts, capped at 15s);
-  worth adding if you seed this with more than a handful of findings.
+  `indexDocument()` indexes one document per call; worth batching if you
+  seed this with more than a handful of findings.
 - No pagination in `s3-source.ts` (single `ListObjectsV2` call) or
   `dynamodb-source.ts` (single `Scan` call) — fine for a demo, not for a
-  large dataset. The reference `backfill_kg.py`/`rededup_main.py` handle
-  pagination properly for real volume.
+  large dataset.
 - No scheduled trigger for the ECS task — run it manually via
   `aws ecs run-task` (see below).
-- No ECR repository or image push — `lib/compute-stack.ts`'s container
-  image is a placeholder (`REPLACE_ME/...`) you need to swap for a real
-  image reference before this can actually deploy and run.
+- No embedding-model comparison script for `NextGenVectorStoreStack` — the
+  collection (and its Titan-v2-vs-Cohere-v4-comparison-shaped IAM/network
+  policies) exists, but nothing in this repo actually invokes Cohere; the
+  dashboard queries it with the same Titan v2 model as Classic.
+- No TLS or authentication in front of the evaluation dashboard — see
+  `dashboard/README.md`'s "What this is not (yet)" for the full list.
 
-**What *is* now implemented, matching production logic-for-logic:**
-idempotent re-indexing via `clearExistingEmbeddings(jobId)` in
-`app/src/opensearch.ts`. AOSS Serverless has no `_delete_by_query`, so
-before (re-)embedding a given `jobId`'s findings, the connector paginates
-through that `jobId`'s existing docs via `search_after` (1000 per page) and
-bulk-deletes them, retrying each delete page up to 4 times
-(exponential-backoff-plus-jitter) and skipping (non-fatal) a page that still
-fails — the exact mechanism `kg.ts:315-372` uses, ported logic-for-logic.
-Without this, re-running the connector against the same source data would
-create duplicate vectors on every run.
+**What *is* implemented:** idempotent re-indexing via
+`clearExistingEmbeddings(jobId)` in `app/src/opensearch.ts`. AOSS
+Serverless has no `_delete_by_query`, so before (re-)embedding a given
+`jobId`'s findings, the connector paginates through that `jobId`'s existing
+docs via `search_after` (1000 per page) and bulk-deletes them, retrying
+each delete page up to 4 times (exponential-backoff-plus-jitter) and
+skipping (non-fatal) a page that still fails. Without this, re-running the
+connector against the same source data would create duplicate vectors on
+every run.
 
 ## Seeding test data
 
 Before running the connector, put something in S3 and/or DynamoDB for it to
 find (optional — it'll fall back to a hardcoded sample finding if you skip
-this).
+this). Two automated alternatives to the manual `aws s3 cp`/`put-item`
+commands below now exist, both writing to the same S3 bucket/DynamoDB table
+`DataStack` creates:
+- `app/src/seed.ts` — `cd app && npm run seed` — generates a batch of
+  synthetic findings split across S3 and DynamoDB, each with the extra
+  `classification`/`summary`/`remediation`/`riskScore` fields (see the
+  `textForEmbedding` row in the parity table above for why those exist).
+- The dashboard's own "Seed Sample Data" button (`POST /api/seed`) —
+  generates and indexes findings directly from the browser; see
+  [`dashboard/README.md`](dashboard/README.md).
+
+The manual commands below still work as a minimal, dependency-free way to
+seed one finding at a time:
 
 **Exact resource names:** the DynamoDB table name is fixed and known in
 advance — `harness-findings` (set in `lib/config.ts`,
@@ -304,22 +470,24 @@ aws dynamodb put-item \
 
 ## Deploying it yourself
 
-1. **Build and push the container image** to an ECR repo of your choosing:
+1. **Prerequisites:** Docker running locally (CDK builds both container
+   images — `app/` and `dashboard/` — from source via
+   `ecs.ContainerImage.fromAsset()` at deploy time; no manual `docker build`/
+   `docker push` or ECR repo of your own needed, CDK publishes to its own
+   bootstrap ECR repo automatically), a bootstrapped CDK
+   account/region (`npx cdk bootstrap`), and **valid AWS credentials
+   available even just to run `cdk synth`** — `bin/app.ts` shells out to
+   `aws sts get-caller-identity` at synth time to resolve
+   `NextGenVectorStoreStack`'s data-access policy principal, and throws if
+   that fails and `COMPARISON_PRINCIPAL_ARN` isn't set as a fallback.
+2. **Install dependencies and deploy the infrastructure:**
    ```bash
-   cd app
    npm install
-   docker build -t bedrock-opensearch-connector .
-   # tag + push to your ECR repo, then update lib/compute-stack.ts's
-   # ecs.ContainerImage.fromRegistry(...) call to point at it
-   # (or switch to ecs.ContainerImage.fromAsset("../app") to have CDK
-   # build and push it for you automatically on `cdk deploy`).
-   ```
-2. **Install CDK dependencies and deploy the infrastructure:**
-   ```bash
-   npm install
-   npx cdk synth        # sanity check — should synthesize all 5 stacks with no errors
+   npx cdk synth        # sanity check — should synthesize all 8 stacks with no errors
    npx cdk deploy --all # requires AWS credentials + a bootstrapped account/region
    ```
+   Deploying `ComputeStack`/`DashboardStack` for the first time can take a
+   while — CDK builds each Docker image locally before publishing it.
 3. **Enable model access for the embedding model** (`amazon.titan-embed-text-v2:0`
    by default) in the Bedrock console for your target region, if you haven't
    already — this is an account-level setting outside of CDK's control.
@@ -340,24 +508,27 @@ aws dynamodb put-item \
    - Or query the collection directly (same `knnSearch()`/index name
      `replica-findings-kg`) from any signed client if you want to inspect it
      outside of the container's own smoke test.
+6. **Reaching the evaluation dashboard from your laptop** (optional): the
+   dashboard's ALB is internal-only, so get to it via `BastionStack`'s SSM
+   instance:
+   ```bash
+   aws ssm start-session \
+     --target <BastionStack's EC2 instance ID, from the console or
+               `aws ec2 describe-instances --filters Name=tag:aws:cloudformation:stack-name,Values=BastionStack Name=instance-state-name,Values=running --query "Reservations[0].Instances[0].InstanceId" --output text`
+               — NOT the `Name` tag: despite `bastion-stack.ts`'s explicit
+               `cdk.Tags.of(this).add("Name", ...)` call, the deployed
+               instance's actual `Name` tag resolves to `BastionStack/Bastion`
+               (the EC2 L2 construct's own default node-path tag wins over
+               the stack-level one), confirmed against a live deploy> \
+     --document-name AWS-StartPortForwardingSessionToRemoteHost \
+     --parameters '{"host":["<DashboardUrl output, hostname only>"],"portNumber":["80"],"localPortNumber":["8080"]}'
+   ```
+   Then open `http://localhost:8080` locally. Full dashboard API and
+   architecture details: [`dashboard/README.md`](dashboard/README.md).
 
-## Reference material this was built from
+## Background and inspiration
 
-Everything here mirrors verified, code-read patterns from
-`pentesting-agentic-harness-infra` — specifically `lib/knowledge-graph-stack.ts`,
-`lib/iam-stack.ts`, `containers/runner-core/src/kg.ts`,
-`skills-and-assets/skills/backfill-data/backfill_kg.py` (the S3 canonical-prefix
-read pattern), and `skills-and-assets/skills/aggressive-dedup/rededup_main.py`
-(the DynamoDB full-table-scan pattern) — not assumed or guessed. See
-`/home/developer/opensearch-current-usage-technical.md`,
-`/home/developer/bedrock-invokemodel-usage-inventory.md`, and
-`/home/developer/opensearch-data-sources-and-consumers.md` for the full
-research this replica is based on.
-
-The `harness-findings`/`FINDINGS_SUMMARY.json` schema match, the
-`textForEmbedding` construction, the OpenSearch document/index field
-mapping, and the `clearExistingEmbeddings` idempotent-reindex logic were
-added in a later pass, sourced from a direct read of `kg.ts:83-104`
-(`parseFindings`), `kg.ts:195-209` (`ensureOpenSearchIndex` mapping),
-`kg.ts:983-1000` (`textForEmbedding` + per-finding document shape), and
-`kg.ts:315-372` (`clearExistingEmbeddings`) in that repo.
+This project was built as a standalone experiment, loosely inspired by the
+general Bedrock/OpenSearch connector shape used in
+`pentesting-agentic-harness-infra`. It exists to explore and
+learn the Bedrock ↔ OpenSearch Serverless connection pattern in isolation.

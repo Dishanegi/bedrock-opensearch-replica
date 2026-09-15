@@ -1,0 +1,525 @@
+<title>OpenSearch NextGen Evaluation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --ink: #14181f;
+    --ink-soft: #4b5563;
+    --ink-faint: #7b8494;
+    --border: #dde2e9;
+    --border-strong: #c7cedb;
+    --accent: #a86a16;
+    --accent-ink: #7a4e0e;
+    --accent-bg: #fbf1de;
+    --classic: #3f6690;
+    --classic-bg: #eaf0f6;
+    --classic-line: #c4d4e4;
+    --nextgen: #167a63;
+    --nextgen-bg: #e7f5f1;
+    --nextgen-line: #bfe0d6;
+    --good: #2e7d4f;
+    --warn: #b3760f;
+    --bad: #b8402c;
+    --code-bg: #eef1f5;
+    --shadow: 0 1px 2px rgba(20,24,31,0.04), 0 8px 24px -12px rgba(20,24,31,0.10);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10131a;
+      --surface: #171b24;
+      --surface-2: #1e2330;
+      --ink: #e8eaef;
+      --ink-soft: #a7afbe;
+      --ink-faint: #7a8496;
+      --border: #2a3040;
+      --border-strong: #3a4256;
+      --accent: #e3a548;
+      --accent-ink: #f0bd6e;
+      --accent-bg: #2c2313;
+      --classic: #8fb4da;
+      --classic-bg: #1a2735;
+      --classic-line: #2f4a63;
+      --nextgen: #56c7ab;
+      --nextgen-bg: #12302a;
+      --nextgen-line: #204c41;
+      --good: #4fb37c;
+      --warn: #e3a548;
+      --bad: #e2685a;
+      --code-bg: #1c212b;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #10131a;
+    --surface: #171b24;
+    --surface-2: #1e2330;
+    --ink: #e8eaef;
+    --ink-soft: #a7afbe;
+    --ink-faint: #7a8496;
+    --border: #2a3040;
+    --border-strong: #3a4256;
+    --accent: #e3a548;
+    --accent-ink: #f0bd6e;
+    --accent-bg: #2c2313;
+    --classic: #8fb4da;
+    --classic-bg: #1a2735;
+    --classic-line: #2f4a63;
+    --nextgen: #56c7ab;
+    --nextgen-bg: #12302a;
+    --nextgen-line: #204c41;
+    --good: #4fb37c;
+    --warn: #e3a548;
+    --bad: #e2685a;
+    --code-bg: #1c212b;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+  html { text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--accent-bg); color: var(--accent-ink); }
+
+  a { color: var(--accent-ink); text-decoration-color: var(--border-strong); text-underline-offset: 2px; }
+  a:hover { text-decoration-color: currentColor; }
+  a:focus-visible, button:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 4rem 1.5rem 6rem;
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 2.75rem 1.15rem 4rem; }
+  }
+
+  h1, h2, h3 {
+    font-family: "Newsreader", Georgia, "Times New Roman", serif;
+    font-weight: 600;
+    text-wrap: balance;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  header.hero { margin-bottom: 2.75rem; }
+  header.hero h1 { font-size: clamp(2.05rem, 4.4vw, 2.7rem); line-height: 1.12; margin: 0.5rem 0 0.75rem; }
+  header.hero .dek { font-size: 1.1rem; color: var(--ink-soft); max-width: 62ch; margin: 0 0 1.4rem; }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.86rem;
+    color: var(--ink-faint);
+  }
+  .meta-row strong { color: var(--ink-soft); font-weight: 600; }
+
+  .status-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem; font-weight: 500;
+    padding: 0.32rem 0.65rem;
+    border-radius: 5px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--ink-soft);
+  }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); flex: none; }
+
+  nav.toc {
+    display: flex; flex-wrap: wrap; gap: 0.5rem;
+    margin: 0 0 3rem;
+    padding: 0.9rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  nav.toc a {
+    font-size: 0.82rem; font-weight: 500;
+    color: var(--ink-soft);
+    text-decoration: none;
+    padding: 0.3rem 0.6rem;
+    border-radius: 5px;
+  }
+  nav.toc a:hover { background: var(--surface-2); color: var(--ink); }
+
+  section { margin: 3.2rem 0; scroll-margin-top: 1.5rem; }
+  section > .num {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+  h2 { font-size: 1.55rem; margin: 0 0 1rem; }
+  h3 { font-size: 1.15rem; margin: 1.8rem 0 0.7rem; font-weight: 600; }
+
+  p { margin: 0 0 1.05rem; max-width: 68ch; }
+  ul, ol { margin: 0 0 1.1rem; padding-left: 1.3rem; max-width: 66ch; }
+  li { margin-bottom: 0.5rem; }
+  li::marker { color: var(--ink-faint); }
+
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.87em; }
+  code {
+    background: var(--code-bg);
+    padding: 0.1em 0.38em;
+    border-radius: 4px;
+    color: var(--ink);
+  }
+
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 1.2rem 1.4rem;
+    margin: 1.4rem 0;
+  }
+  .callout h4 {
+    margin: 0 0 0.6rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.76rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .callout p:last-child, .callout ul:last-child { margin-bottom: 0; }
+
+  .callout.gap { border-left-color: var(--bad); }
+  .callout.gap h4 { color: var(--bad); }
+
+  .tldr {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.6rem 1.7rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 2.6rem;
+  }
+  .tldr h4 {
+    margin: 0 0 0.9rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.76rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .tldr ul { margin: 0; padding-left: 0; list-style: none; max-width: none; }
+  .tldr li {
+    display: flex; gap: 0.7rem;
+    padding: 0.55rem 0;
+    border-top: 1px solid var(--border);
+    font-size: 0.98rem;
+  }
+  .tldr li:first-child { border-top: none; }
+  .tldr li .mark { color: var(--accent-ink); font-weight: 600; flex: none; }
+
+  .legend { display: flex; gap: 1.4rem; margin: 0.4rem 0 1.3rem; font-size: 0.86rem; color: var(--ink-soft); }
+  .legend .item { display: inline-flex; align-items: center; gap: 0.45rem; }
+  .legend .sw { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .sw.classic { background: var(--classic); }
+  .sw.nextgen { background: var(--nextgen); }
+
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0 1.6rem; border: 1px solid var(--border); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 480px; font-size: 0.93rem; background: var(--surface); }
+  th, td { text-align: left; padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.74rem; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 500;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-strong);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num, th.num { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; text-align: right; }
+  th.col-classic { color: var(--classic); }
+  th.col-nextgen { color: var(--nextgen); }
+  td.cell-classic { background: var(--classic-bg); }
+  td.cell-nextgen { background: var(--nextgen-bg); }
+
+  .pill {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem; font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    letter-spacing: 0.03em;
+  }
+  .pill.classic { background: var(--classic-bg); color: var(--classic); border: 1px solid var(--classic-line); }
+  .pill.nextgen { background: var(--nextgen-bg); color: var(--nextgen); border: 1px solid var(--nextgen-line); }
+  .pill.good { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
+  .pill.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+  .pill.bad { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+
+  .checklist { list-style: none; padding: 0; margin: 1rem 0 1.5rem; }
+  .checklist li {
+    display: grid; grid-template-columns: 1.5rem 1fr; gap: 0.2rem 0.7rem;
+    padding: 0.85rem 0; border-top: 1px solid var(--border);
+  }
+  .checklist li:first-child { border-top: none; }
+  .checklist .tag {
+    grid-row: 1 / 3; align-self: start;
+    font-family: "IBM Plex Mono", monospace; font-size: 0.68rem; font-weight: 600;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 0.2rem 0.4rem; border-radius: 4px; text-align: center; height: fit-content;
+  }
+  .tag.infra { background: var(--classic-bg); color: var(--classic); }
+  .tag.code { background: var(--nextgen-bg); color: var(--nextgen); }
+  .tag.data { background: var(--accent-bg); color: var(--accent-ink); }
+  .checklist .title { font-weight: 600; }
+  .checklist .desc { color: var(--ink-soft); font-size: 0.93rem; max-width: 60ch; }
+  .checklist .desc code { font-size: 0.85em; }
+
+  blockquote {
+    margin: 1.3rem 0; padding: 0.2rem 0 0.2rem 1.1rem;
+    border-left: 2px solid var(--border-strong);
+    color: var(--ink-soft); font-style: italic;
+    max-width: 62ch;
+  }
+
+  .sources { font-size: 0.88rem; }
+  .sources li { margin-bottom: 0.4rem; }
+  .sources .src-date { color: var(--ink-faint); font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; }
+
+  hr.rule { border: none; border-top: 1px solid var(--border); margin: 3.4rem 0 3.2rem; }
+
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.6rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .callout, .tldr { transition: border-color 0.15s ease; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="hero">
+    <span class="eyebrow">Internal POC Update &middot; Bedrock &rarr; OpenSearch Serverless</span>
+    <h1>Classic vs. NextGen: what we built and what moving forward costs</h1>
+    <p class="dek">A working replica of the production connector, tested live against both OpenSearch Serverless generations &mdash; plus what AWS's docs say, why we're on Titan, and what a real move to NextGen requires.</p>
+    <div class="meta-row">
+      <span><strong>Prepared by</strong> Disha Negi</span>
+      <span><strong>Repo</strong> bedrock-opensearch-replica</span>
+      <span><strong>Date</strong> September 1, 2026</span>
+    </div>
+    <div class="status-chips">
+      <span class="chip"><span class="dot"></span>8/8 stacks deployed &amp; verified live</span>
+      <span class="chip"><span class="dot" style="background:var(--classic)"></span>Classic collection tested</span>
+      <span class="chip"><span class="dot" style="background:var(--nextgen)"></span>NextGen collection tested</span>
+    </div>
+  </header>
+
+  <div class="tldr">
+    <h4>TL;DR</h4>
+    <ul>
+      <li><span class="mark">&rarr;</span><span>All 8 stacks deployed live; seeded 1,784 real findings into <strong>both</strong> collections and queried head-to-head.</span></li>
+      <li><span class="mark">&rarr;</span><span>NextGen ran <strong>2.5&ndash;3.4&times; slower per query</strong> than Classic, measured warm. NextGen's actual win is cost (scale-to-zero) &mdash; Classic bills ~$175/mo just to exist, idle or not.</span></li>
+      <li><span class="mark">&rarr;</span><span>Titan is our pragmatic default (cost, parity, zero new infra) &mdash; <strong>not a proven-best model.</strong> Independent evidence puts it behind Cohere and open-source alternatives on quality.</span></li>
+      <li><span class="mark">&rarr;</span><span>If token-based embeddings are the actual goal: no Bedrock/Vertex model generates them, and AWS confirms Serverless can't run the pipeline to serve them either way. That's a vector-store decision, not a model swap &mdash; see the table below.</span></li>
+    </ul>
+  </div>
+
+  <section id="built">
+    <span class="num">01</span>
+    <h2>What we built</h2>
+    <p>An 8-stack CDK replica of the production Bedrock&rarr;OpenSearch connector, extended to evaluate NextGen head-to-head &mdash; all 8 stacks deployed and verified live, not just synthesized: <code>IamStack</code> (roles/logs), <code>NetworkStack</code> (private VPC, both AOSS generations), <code>VectorStoreStack</code> (<span class="pill classic">Classic</span> collection), <code>DataStack</code> (S3+DynamoDB source data), <code>ComputeStack</code> (the on-demand connector), <code>NextGenVectorStoreStack</code> (<span class="pill nextgen">NextGen</span> collection), <code>DashboardStack</code> (eval UI, keyword+vector search on both), <code>BastionStack</code> (SSM access to the private dashboard).</p>
+    <p>The comparison is <span class="pill classic">Classic</span> vs <span class="pill nextgen">NextGen</span> &mdash; two infrastructure generations of the same product, same dataset, same Titan model on both &mdash; not keyword vs. vector search (both collections do both).</p>
+    <p style="font-size:0.9rem;color:var(--ink-soft)">Architecture map: <a href="https://claude.ai/code/artifact/710a3208-693a-462d-b303-cec7deec7496">diagram &rarr;</a></p>
+  </section>
+
+  <section id="results">
+    <span class="num">02</span>
+    <h2>Test results</h2>
+    <div class="legend">
+      <span class="item"><span class="sw classic"></span>Classic</span>
+      <span class="item"><span class="sw nextgen"></span>NextGen</span>
+    </div>
+    <p>Seeded 1,784 real findings into both collections via the dashboard's own seed path (same S3/DynamoDB round-trip as production), then ran 5 fixed queries through <code>/api/compare</code> &mdash; one embedding, fired at both collections in both modes simultaneously. All 20 searches returned 5/5 hits.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Query</th>
+            <th class="col-classic num">Classic kw</th>
+            <th class="col-classic num">Classic vec</th>
+            <th class="col-nextgen num">NextGen kw</th>
+            <th class="col-nextgen num">NextGen vec</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>S3 bucket public read access</td><td class="num cell-classic">137&nbsp;ms</td><td class="num cell-classic">111&nbsp;ms</td><td class="num cell-nextgen">405&nbsp;ms</td><td class="num cell-nextgen">603&nbsp;ms</td></tr>
+          <tr><td>RDS not encrypted at rest</td><td class="num cell-classic">136&nbsp;ms</td><td class="num cell-classic">123&nbsp;ms</td><td class="num cell-nextgen">207&nbsp;ms</td><td class="num cell-nextgen">337&nbsp;ms</td></tr>
+          <tr><td>IAM wildcard permissions</td><td class="num cell-classic">128&nbsp;ms</td><td class="num cell-classic">106&nbsp;ms</td><td class="num cell-nextgen">262&nbsp;ms</td><td class="num cell-nextgen">253&nbsp;ms</td></tr>
+          <tr><td>Unrestricted inbound SSH</td><td class="num cell-classic">167&nbsp;ms</td><td class="num cell-classic">141&nbsp;ms</td><td class="num cell-nextgen">422&nbsp;ms</td><td class="num cell-nextgen">436&nbsp;ms</td></tr>
+          <tr><td>Lambda plaintext secrets</td><td class="num cell-classic">103&nbsp;ms</td><td class="num cell-classic">97&nbsp;ms</td><td class="num cell-nextgen">355&nbsp;ms</td><td class="num cell-nextgen">347&nbsp;ms</td></tr>
+          <tr><td><strong>Average</strong></td><td class="num cell-classic"><strong>134&nbsp;ms</strong></td><td class="num cell-classic"><strong>116&nbsp;ms</strong></td><td class="num cell-nextgen"><strong>330&nbsp;ms</strong></td><td class="num cell-nextgen"><strong>395&nbsp;ms</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <h4>Key observation</h4>
+      <p>NextGen was slower on every query &mdash; <strong>~2.5&times;</strong> keyword, <strong>~3.4&times;</strong> vector, measured warm (not a scale-to-zero cold start). Small sample (5 queries, one run, default collection-group sizing) &mdash; a real signal, not a benchmark verdict. k-NN scores matched exactly between collections (same vector, same data); only BM25 scores differed, which is expected and not meaningful on its own.</p>
+    </div>
+  </section>
+
+  <section id="docs">
+    <span class="num">03</span>
+    <h2>What AWS's own docs say: Classic vs NextGen</h2>
+    <p>NextGen reached GA on <strong>May 28, 2026</strong> &mdash; a genuinely new architecture (compute decoupled from storage), not a rebrand.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Dimension</th><th class="col-classic">Classic</th><th class="col-nextgen">NextGen</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Autoscaling</td><td class="cell-classic">Minutes</td><td class="cell-nextgen">Seconds &mdash; up to 20&times; faster</td></tr>
+          <tr><td>Idle compute</td><td class="cell-classic">Minimum 2 OCU floor, always billed</td><td class="cell-nextgen">Scales to zero after 10 min idle</td></tr>
+          <tr><td>Capacity mgmt</td><td class="cell-classic">Per collection</td><td class="cell-nextgen">Per collection group, shared OCU limits</td></tr>
+          <tr><td>VPC connectivity</td><td class="cell-classic">Custom <code>VpcEndpoint</code> resource, per collection</td><td class="cell-nextgen">Standard PrivateLink (<code>com.amazonaws.&#123;region&#125;.aoss-data</code>)</td></tr>
+          <tr><td>Vector engine control</td><td class="cell-classic"><code>Engine</code> (hnsw/faiss) configurable</td><td class="cell-nextgen"><strong>Not configurable</strong> &mdash; unsupported</td></tr>
+          <tr><td>Cost profile</td><td class="cell-classic">~$175&ndash;350/mo minimum, even idle</td><td class="cell-nextgen">Up to 60% lower for bursty/idle workloads</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Two rows we'd already hit ourselves before reading the docs: our own code comments independently discovered the different VPC endpoint type and the unsupported <code>Engine</code> property &mdash; AWS's documentation confirms both exactly.</p>
+  </section>
+
+  <section id="titan">
+    <span class="num">04</span>
+    <h2>Why we're still on Titan &mdash; and whether it's actually the best option</h2>
+    <p><strong>Titan is our pragmatic default, not a proven-best embedding model</strong> &mdash; different claims, and we'd only ever argued the first one until now.</p>
+    <p><strong>What justifies it:</strong> production parity (mirrors <code>kg.ts</code>, the reference codebase, field-for-field), and cost + zero new infrastructure (5&times; cheaper than Cohere, 7.5&times; cheaper than Gemini Embedding, and already behind the same private VPC endpoint &mdash; Vertex AI or any external provider would mean routing outside a VPC built with no NAT/IGW).</p>
+    <p><strong>What the evidence says about quality:</strong> the most detailed independent benchmark we found (testing an older Titan generation, V1) scored it worst of 5 models compared; a separate RAG evaluation found Cohere beat an even older Titan generation (G1) outright; Titan doesn't appear on a curated 2026 top-tier leaderboard where Gemini Embedding does. Independent, current-V2-specific benchmarks are genuinely sparse &mdash; that's a real gap, not a "V2 is fine" conclusion.</p>
+    <p><strong>If token-based (late-interaction, ColBERT-style) embeddings are the actual goal:</strong> Titan, Cohere-on-Bedrock, and Vertex AI all only return pooled single vectors &mdash; confirmed, none support this. Providers that do (Jina, Mixedbread, open-source) aren't Bedrock/Vertex models, and AWS's own docs confirm OpenSearch Serverless &mdash; Classic or NextGen &mdash; can't run the pipeline needed to serve them anyway. This is a provider-and-vector-store decision, not a config change &mdash; see the recommendation below.</p>
+  </section>
+
+  <section id="migration">
+    <span class="num">05</span>
+    <h2>If we move forward with NextGen: what has to change</h2>
+    <ul class="checklist">
+      <li>
+        <span class="tag infra">Infra</span>
+        <span class="title">Collection group + standby replicas required</span>
+        <span class="desc">NextGen needs a <code>CfnCollectionGroup</code> (already prototyped in <code>lib/nextgen-vector-store-stack.ts</code>), and rejects <code>StandbyReplicas: DISABLED</code> &mdash; Classic's current dev/test cost tier goes away under NextGen.</span>
+      </li>
+      <li>
+        <span class="tag infra">Infra</span>
+        <span class="title">VPC endpoint swap</span>
+        <span class="desc">Drop the custom <code>VpcEndpoint</code> resource for a standard <code>ec2.InterfaceVpcEndpoint</code> &mdash; already built as <code>NetworkStack</code>'s <code>aossNextGenEndpointId</code>.</span>
+      </li>
+      <li>
+        <span class="tag code">App code</span>
+        <span class="title">Remove the hardcoded vector engine</span>
+        <span class="desc"><code>app/src/opensearch.ts</code>'s <code>ensureIndex()</code> hardcodes <code>method: &#123; name: "hnsw", engine: "faiss" &#125;</code> &mdash; has to become conditional before it'll succeed against NextGen.</span>
+      </li>
+      <li>
+        <span class="tag" style="background:color-mix(in srgb, var(--good) 16%, transparent); color:var(--good)">Confirmed</span>
+        <span class="title">Existing AOSS workarounds still apply, unchanged</span>
+        <span class="desc">Tested live: <code>refresh: true</code> and <code>_delete_by_query</code> are both still rejected on NextGen, identically to Classic &mdash; <code>clearExistingEmbeddings()</code>'s workaround ports over as-is.</span>
+      </li>
+    </ul>
+    <p><strong>How the actual shift works:</strong> AWS's documented tool is Amazon OpenSearch Ingestion, not the remote-reindex API (which isn't documented for Serverless-to-Serverless at all) &mdash; but neither applies cleanly here, because OpenSearch holds nothing that isn't already in S3/DynamoDB. Every embedding is <em>derived</em> from that source data, so moving generations just means re-pointing the connector's env vars at the new collection and re-running &mdash; no data copy needed. The rebuild <em>is</em> the migration.</p>
+  </section>
+
+  <section id="cost">
+    <span class="num">06</span>
+    <h2>The cost angle specifically</h2>
+    <p>The connector is deliberately <strong>on-demand</strong>, not a standing service &mdash; close to a worst case for Classic's pricing and a best case for NextGen's. Classic bills its OCU floor continuously (~$175/mo, even our cheaper dev/test tier) whether the connector runs or not. NextGen scales to zero after 10 min idle, so the realistic bill approaches the cost of actual runs, not a 24/7 floor. NextGen's win is workload-shaped: for an always-on, high-QPS service Classic can still be the better fit &mdash; for an on-demand batch connector like ours, the numbers favor NextGen.</p>
+  </section>
+
+  <section id="recommendation">
+    <span class="num">07</span>
+    <h2>Recommendation</h2>
+    <p>Four separate decisions, not one go/no-go call &mdash; they don't all point the same way:</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>If what you want is&hellip;</th><th>Then&hellip;</th><th>Because</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Lower cost</strong></td>
+            <td>Move to NextGen</td>
+            <td>Classic bills continuously regardless of use; NextGen scales to zero. Migration is cheap &mdash; no data copy, just re-point and re-run.</td>
+          </tr>
+          <tr>
+            <td><strong>Lowest latency</strong> today</td>
+            <td>Stay on Classic</td>
+            <td>NextGen measured 2.5&ndash;3.4&times; slower, warm. Likely untuned default OCU capacity, not a hard ceiling &mdash; unproven until retested with a sized collection group.</td>
+          </tr>
+          <tr>
+            <td><strong>Best retrieval quality</strong></td>
+            <td>Neither this switch nor Titan gets you there</td>
+            <td>Collection generation doesn't touch embedding quality. Titan isn't evidenced as best-in-class &mdash; that's an embedding-model decision, separate from this one.</td>
+          </tr>
+          <tr>
+            <td><strong>Token-based embeddings</strong></td>
+            <td>Not a NextGen decision &mdash; a different architecture</td>
+            <td>Neither Serverless generation can run the required pipeline. Needs a different embedding provider (Jina/Mixedbread/self-hosted) <em>and</em> likely a different vector store (Vespa, or self-managed OpenSearch).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <section id="sources">
+    <span class="num">08</span>
+    <h2>Sources</h2>
+    <ul class="sources">
+      <li><a href="https://aws.amazon.com/about-aws/whats-new/2026/05/amazon-opensearch-serverless-next-generation-generally-available/">The next generation of Amazon OpenSearch Serverless is now generally available</a> <span class="src-date">AWS, May 2026</span></li>
+      <li><a href="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-vpc.html">Data plane access through AWS PrivateLink</a> <span class="src-date">AWS Docs</span></li>
+      <li><a href="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-machine-learning-unsupported-features.html">Unsupported Machine Learning APIs and features</a> <span class="src-date">AWS Docs &mdash; confirms <code>ml_inference</code> unsupported on Serverless</span></li>
+      <li><a href="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/remote-reindex.html">Migrating Amazon OpenSearch Service indexes using remote reindex</a> <span class="src-date">AWS Docs</span></li>
+      <li><a href="https://www.philschmid.de/amazon-titan-embeddings">Amazon Bedrock: How good (bad) is Titan Embeddings?</a> <span class="src-date">Independent MTEB eval, tests Titan V1</span></li>
+      <li><a href="https://www.tonic.ai/blog/rag-evaluation-series-validating-the-rag-performance-of-amazon-titan-vs-cohere-using-amazon-bedrock">RAG Evaluation: Titan vs Cohere</a> <span class="src-date">Tonic.ai, tests Titan G1</span></li>
+      <li><a href="https://www.codesota.com/benchmarks/mteb">MTEB Leaderboard 2026</a> <span class="src-date">CodeSOTA, May 2026</span></li>
+      <li>Repo code comments: <code>lib/vector-store-stack.ts</code>, <code>lib/nextgen-vector-store-stack.ts</code>, <code>app/src/opensearch.ts</code>.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Live redeploy of all 8 stacks in <code>bedrock-opensearch-replica</code>, September 1, 2026. Infrastructure remains live pending teardown.
+  </footer>
+
+</div>

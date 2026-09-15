@@ -199,5 +199,45 @@ export class NetworkStack extends cdk.Stack {
       privateDnsEnabled: true
     });
     this.aossNextGenEndpointId = aossNextGenVpcEndpoint.vpcEndpointId;
+
+    // opensearchserverless CONTROL-PLANE API (CreateIndex/GetIndex/etc. —
+    // what DashboardStack's CollectionClient.ensureAseIndex() calls to
+    // provision an ASE-enabled index) — a third, distinct AOSS endpoint
+    // service from the two data-plane ones above (verified via
+    // `aws ec2 describe-vpc-endpoint-services`: com.amazonaws.<region>.aoss
+    // vs .aoss-data). Without this, the ECS task has no route to it at all
+    // in this NAT-less VPC — the SDK call doesn't error, it just hangs
+    // until timeout, which is what surfaced this gap. Not gated by either
+    // collection's network policy (SourceVPCEs) — that only controls
+    // reachability to a collection's own data-plane endpoint; this is the
+    // account-level control-plane API, authorized purely via IAM + the data
+    // access policy's `model`/`index` rules.
+    //
+    // AZ-restricted (unlike every other endpoint above, which spans all of
+    // the VPC's isolated subnets) — discovered the hard way on first deploy:
+    // `aws ec2 describe-vpc-endpoint-services --service-names
+    // com.amazonaws.us-east-1.aoss` shows this service only supports
+    // us-east-1b/c/d, not us-east-1a, where this VPC's first subnet (from
+    // maxAzs: 2) lands. CloudFormation rejects the endpoint outright if any
+    // selected subnet's AZ isn't supported — it doesn't just skip that AZ.
+    // Single-AZ, not the usual multi-AZ redundancy, is the only option this
+    // service's own AZ availability allows here, not a choice.
+    //
+    // Hardcoded literal AZ name, deliberately NOT `${cdk.Aws.REGION}b` — AZ
+    // selection for subnets is a synth-time decision (it determines which
+    // literal Subnet resources land in this endpoint's SubnetIds), but
+    // cdk.Aws.REGION is a deploy-time-only CloudFormation token that isn't
+    // resolved yet at synth time, so string-templating it here would silently
+    // match nothing. If this project ever deploys to a region other than
+    // us-east-1, re-verify supported AZs with the command above first.
+    this.vpc.addInterfaceEndpoint("AossControlPlaneEndpoint", {
+      service: new ec2.InterfaceVpcEndpointService(`com.amazonaws.${cdk.Aws.REGION}.aoss`, 443),
+      subnets: this.vpc.selectSubnets({
+        subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+        availabilityZones: ["us-east-1b"]
+      }),
+      securityGroups: [endpointSg],
+      privateDnsEnabled: true
+    });
   }
 }

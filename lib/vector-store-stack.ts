@@ -44,6 +44,12 @@ export interface VectorStoreStackProps extends cdk.StackProps {
 export class VectorStoreStack extends cdk.Stack {
   public readonly collectionName = appConfig.vectorStore.collectionName;
   public readonly collectionEndpoint: string;
+  /** Collection ID (distinct from collectionName) — required by the
+   *  opensearchserverless control-plane API's CreateIndex/GetIndex/
+   *  DeleteIndex operations (id, not name). Needed for ASE index
+   *  provisioning specifically; the generic OpenSearch data-plane client
+   *  used for the dense knn_vector index only ever needed the endpoint. */
+  public readonly collectionId: string;
 
   constructor(scope: Construct, id: string, props: VectorStoreStackProps) {
     super(scope, id, props);
@@ -87,15 +93,62 @@ export class VectorStoreStack extends cdk.Stack {
     // CMK... the correct mechanism is CDK's key.grant(), which creates a KMS
     // Grant." My first pass only granted 2 of these 6 actions — matching
     // the reference's verified set exactly now, not guessing at a subset.
-    key.grant(
-      new iam.ServicePrincipal("aoss.amazonaws.com"),
-      "kms:Encrypt",
-      "kms:Decrypt",
-      "kms:ReEncrypt*",
-      "kms:GenerateDataKey*",
-      "kms:DescribeKey",
-      "kms:CreateGrant"
-    );
+    //
+    // Two grantees, not one, and 4 extra actions beyond the base 6 — both
+    // empirically required for ASE (Automatic Semantic Enrichment) to work
+    // on a customer-managed-key collection. Without either half of this,
+    // AOSS's data-plane read/write (the original reason this grant exists)
+    // works fine, but ASE's CreateIndex fails partway through provisioning:
+    // aoss.amazonaws.com alone gets past "create ingest pipeline" only once
+    // es.amazonaws.com is also granted (ASE's ML pipeline runs on the same
+    // underlying service the non-Serverless "es" principal represents, not
+    // aoss.amazonaws.com's data-plane role alone) — and even with both
+    // principals, ASE's ML connector step additionally needs the 4
+    // grant-lifecycle/key-pair actions below (ListGrants/RevokeGrant/
+    // RetireGrant to manage the sub-grants its connector creates for
+    // itself, GenerateDataKeyPair* for the connector's own key material).
+    // Confirmed via isolated throwaway-collection testing: this exact
+    // principal set + action list is what turned "Access denied to create
+    // ML connector" into a successfully provisioned ASE index — a plain
+    // kms:* wildcard also worked but is not something to actually grant.
+    //
+    // EncryptionContext-conditioned rather than a bare Resource:"*" grant —
+    // narrows this from "these two AWS services can use this key for
+    // anything" to "...only when the operation is on an AOSS collection in
+    // this account," mirroring the condition AOSS's own auto-generated
+    // grant already uses internally (visible via `aws kms list-grants` on
+    // this key: Constraints.EncryptionContextSubset with the same
+    // aws:aoss:arn key). Separately verified via the same throwaway-collection
+    // method that this condition doesn't break ASE — every stage (ingest
+    // pipeline, ML connector, ML model) still provisions successfully with
+    // it in place, so this is strictly a least-privilege narrowing, not a
+    // functional change.
+    for (const principal of ["aoss.amazonaws.com", "es.amazonaws.com"]) {
+      key.addToResourcePolicy(
+        new iam.PolicyStatement({
+          effect: iam.Effect.ALLOW,
+          principals: [new iam.ServicePrincipal(principal)],
+          actions: [
+            "kms:Encrypt",
+            "kms:Decrypt",
+            "kms:ReEncrypt*",
+            "kms:GenerateDataKey*",
+            "kms:GenerateDataKeyPair*",
+            "kms:DescribeKey",
+            "kms:CreateGrant",
+            "kms:ListGrants",
+            "kms:RevokeGrant",
+            "kms:RetireGrant"
+          ],
+          resources: ["*"],
+          conditions: {
+            StringLike: {
+              "kms:EncryptionContext:aws:aoss:arn": `arn:aws:aoss:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:collection/*`
+            }
+          }
+        })
+      );
+    }
 
     // AllowFromPublic and SourceVPCEs are mutually exclusive on an AOSS
     // network policy rule — the API rejects a rule specifying both. Normal
@@ -147,12 +200,39 @@ export class VectorStoreStack extends cdk.Stack {
               {
                 ResourceType: "collection",
                 Resource: [`collection/${this.collectionName}`],
-                Permission: ["aoss:*"]
+                // aoss:* kept for everything already working under it; the
+                // two explicit actions added for ASE's own pipeline
+                // provisioning, matching AWS's ASE docs exactly — see the
+                // index rule's comment below for why the wildcard alone
+                // can't be trusted for the newer ASE-related actions.
+                Permission: ["aoss:*", "aoss:CreateCollectionItems", "aoss:DescribeCollectionItems"]
               },
               {
                 ResourceType: "index",
                 Resource: [`index/${this.collectionName}/*`],
-                Permission: ["aoss:*"]
+                // aoss:* alone was empirically insufficient for ASE's index
+                // schema operations (GetIndexCommand came back
+                // AccessDeniedException: "Access denied to get index" even
+                // with this wildcard already in place) — AOSS's access-policy
+                // wildcard apparently doesn't expand to cover these newer
+                // actions the way an IAM wildcard would. Explicit actions
+                // added alongside aoss:* (kept for the existing dense
+                // knn_vector document search/index operations, which already
+                // work under it) rather than replacing it, matching the exact
+                // set AWS's ASE docs show for this resource type.
+                Permission: ["aoss:*", "aoss:CreateIndex", "aoss:DescribeIndex", "aoss:UpdateIndex", "aoss:DeleteIndex"]
+              },
+              // ASE provisions its own service-managed ML model per
+              // semantic_enrichment-enabled index — a distinct resource type
+              // from collection/index in AOSS's access-policy schema, so it
+              // needs its own explicit rule (AWS's ASE docs show this same
+              // three-rule shape: collection, index, model). Without this,
+              // CreateIndexCommand against an ASE-enabled schema is denied
+              // even though the identity policy allows aoss:CreateMLResource.
+              {
+                ResourceType: "model",
+                Resource: [`model/${this.collectionName}/*`],
+                Permission: ["aoss:*", "aoss:CreateMLResource"]
               }
             ],
             Principal: [props.taskRole.roleArn, ...(props.additionalDataAccessPrincipals ?? [])]
@@ -164,5 +244,6 @@ export class VectorStoreStack extends cdk.Stack {
     // AWS::OpenSearchServerless::Collection exposes CollectionEndpoint as a
     // direct GetAtt attribute — no manual URL construction needed.
     this.collectionEndpoint = collection.getAtt("CollectionEndpoint").toString();
+    this.collectionId = collection.getAtt("Id").toString();
   }
 }
